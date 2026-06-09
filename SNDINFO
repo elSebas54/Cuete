@@ -1,11 +1,15 @@
 Dwinko Dwinko
+ZipJump ZipJump
+ZipLand Zipland
 ricochet ricochet
 $limit Ricochet 0
+pwew pwew
 weapons/kick		kick
-RayShot Rayshot
+RayShoot Rayshoot
+Zploot Zploot
 TireFriction "Sounds/tires_squal_loop.wav"
 bing1 bing1
-Whup Whup
+Whuap Whuap
 BoulderDrop "Sounds/boulder_drop.ogg"
 SnareDrum "Sounds/snare_drum.ogg"
 PAP pap
@@ -48,6 +52,6 @@ $playersound Bronca neutral *pain75 Cpain3
 $playersound Bronca neutral *pain50 Cpain5
 $playersound Bronca neutral *pain25 Cpain7
 $playersound Bronca neutral *jump Cjump
-$playersound Bronca neutral *land Dwinko
+$playersound Bronca neutral *land ZipLand
 $playersound Bronca neutral *grunt Cpain0
 $playersound Bronca neutral *taunt CTaunt
