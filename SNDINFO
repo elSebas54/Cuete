@@ -1,0 +1,53 @@
+Dwinko Dwinko
+ricochet ricochet
+$limit Ricochet 0
+weapons/kick		kick
+RayShot Rayshot
+TireFriction "Sounds/tires_squal_loop.wav"
+bing1 bing1
+Whup Whup
+BoulderDrop "Sounds/boulder_drop.ogg"
+SnareDrum "Sounds/snare_drum.ogg"
+PAP pap
+WoolShear "Sounds/woolshear.ogg"
+ballroll ballroll
+
+$random Cjump { Cjump0 Cjump1 Cjump2 Cjump3 }
+Cjump0 Cjump0
+Cjump1 Cjump1
+Cjump2 Cjump2
+Cjump3 Cjump3
+
+$random Cdeath { Cdeath0 Cdeath1 Cdeath2 Cdeath3 }
+Cdeath0 Cdeath0
+Cdeath1 Cdeath1
+Cdeath2 Cdeath2
+Cdeath3 Cdeath3
+
+Cpain0 Cpain0
+Cpain1 Cpain1
+Cpain2 Cpain2
+Cpain3 Cpain3
+Cpain4 Cpain4
+Cpain5 Cpain5
+Cpain6 Cpain6
+Cpain7 Cpain7
+
+$random CTaunt { CTaunt0 CTaunt1 CTaunt2 }
+CTaunt0 CTaunt0
+CTaunt1 CTaunt1
+CTaunt2 CTaunt2
+
+$playersound Bronca neutral *usefail Dwinko
+$playersound Bronca neutral *death Cdeath0
+$playersound Bronca neutral *xdeath Cdeath2
+$playersound Bronca neutral *wimpydeath Cdeath1
+$playersound Bronca neutral *crazydeath Cdeath3
+$playersound Bronca neutral *pain100 Cpain1
+$playersound Bronca neutral *pain75 Cpain3
+$playersound Bronca neutral *pain50 Cpain5
+$playersound Bronca neutral *pain25 Cpain7
+$playersound Bronca neutral *jump Cjump
+$playersound Bronca neutral *land Dwinko
+$playersound Bronca neutral *grunt Cpain0
+$playersound Bronca neutral *taunt CTaunt

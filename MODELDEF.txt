@@ -1,0 +1,57 @@
+Model Cuete
+{ 
+	Path "Models" 
+	SurfaceSkin 0 0 "CueteBody.png" 
+	SurfaceSkin 0 1 "CueteFace.png" 
+	SurfaceSkin 0 2 "RailThingi.png" 
+	MODEL 0 "Cuete.md3"
+	DONTCULLBACKFACES
+	USEACTORPITCH
+	USEACTORROLL
+	AngleOffset -90
+	//CORRECTPIXELSTRETCH
+	FrameIndex PLAY A 0 0
+	FrameIndex PLAY B 0 1
+	FrameIndex PLAY C 0 2
+	FrameIndex PLAY D 0 3
+	FrameIndex PLAY E 0 4
+	FrameIndex PLAY F 0 5
+	FrameIndex PLAY G 0 0
+	FrameIndex PLAY H 0 0
+	FrameIndex PLAY I 0 0
+	FrameIndex PLAY J 0 0
+	FrameIndex PLAY K 0 0
+	FrameIndex PLAY M 0 0
+	FrameIndex PLAY N 0 0
+	FrameIndex PLAY L 0 0
+	FrameIndex PLAY O 0 0
+	FrameIndex PLAY P 0 0
+	FrameIndex PLAY Q 0 0
+}
+
+Model MoveTech
+{ 
+	Path "Models" 
+	SurfaceSkin 0 0 "RailThingi.png" 
+	SurfaceSkin 0 1 "CueteBody.png" 
+	MODEL 0 "RailThingie.md3"
+	DONTCULLBACKFACES
+	USEACTORPITCH
+	USEACTORROLL
+	AngleOffset -90
+	Offset 0 0 -4
+	//CORRECTPIXELSTRETCH
+	FrameIndex RLBS A 0 0
+}
+
+Model RayTracer
+{ 
+	Path "Models" 
+	SKIN 0 "grem.png" 
+	MODEL 0 "Ray.md3"
+	DONTCULLBACKFACES
+	USEACTORPITCH
+	USEACTORROLL
+	//CORRECTPIXELSTRETCH
+	FrameIndex LZBM D 0 0
+}

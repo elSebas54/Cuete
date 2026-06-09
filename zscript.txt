@@ -1,0 +1,1374 @@
+version "4.10.0"
+
+Class Cuete : DoomPlayer
+{
+	Double BigSpeed;
+	Int HitCool;
+	
+	mixin NeoRipper;
+	
+	Default
+	{
+		Height 26;
+		Radius 6;
+		Speed 0.6;
+		Player.JumpZ 4;
+		Player.ViewBob 0.3;
+		Player.AttackZOffset 5;
+		Player.ViewHeight 19;
+		MaxStepHeight 10;
+		Mass 20;
+		Gravity 0.25;
+		MaxSlopeSteepness 0;
+		Player.AirCapacity -1;
+		GibHealth 50;
+
+		Player.DisplayName "Cuete";
+		Player.SoundClass "Bronca";
+		//Player.WeaponSlot 1, "MoveTech";
+		Player.StartItem "MoveTech";
+
+		Player.ForwardMove 1,1;
+		Player.SideMove 1.23,1.23;
+
+		//DamageFunction (100);
+		+NOFRICTION;
+  }
+	States
+	{
+		See:
+			PLAY ABAC 4 {
+				A_SetTics( Clamp(30/VelengXY,2,10) );
+			}
+			Loop;
+		Jump:
+			PLAY ADD 2;
+		InAir:
+			PLAY E 2 {if(player.onground) SetState(SeeState);}
+			Loop;
+		Pain:
+			PLAY F 4 A_Pain();
+			PLAY E 2;
+			Goto Spawn;
+		Death:
+			PLAY F 1 {
+				Vel.z += 4*GetGravity();
+				A_StartSound("Cdeath", 2);//A_PlayerScream();
+			} 
+			PLAY FFFFFFFFF 1;//{Pitch += 10; Roll += 10;}
+			Goto Crush;
+		Xdeath:
+			PLAY F 2 A_StartSound("Cdeath", 2);
+		Crush:
+			TNT1 A -1 {
+				A_StopAllSounds();
+				A_StartSound("PAP", 4);
+				Actor puff = Spawn("RayPuff", Pos + (0,0,height));
+				puff.Scale = (2,2);
+				For(Int I; I<18; I++)
+				{
+					VisualThinker spk = VisualThinker.Spawn("NeoSparky", TexMan.CheckForTexture("Models/grem.png"), pos,
+					Vel + (fRandom(-10,10),fRandom(-10,10),fRandom(-10,10)), 1, 
+					SPF_FULLBRIGHT|SPF_ROLL, Random(0,359), (16,16), (0,0), STYLE_ADD );
+					NeoSparky(spk).gravity = -0.4*GetGravity();
+				}
+				Vel *= 0;
+			}
+			Loop;
+	}
+	
+	override void BeginPlay()
+    {
+        super.BeginPlay();
+		Actor ring = Spawn("BodyCollider",Pos);
+		ring.target = self;
+	}
+  
+	Vector3 OldVel;
+	Vector2 VectorMove;
+	Vector3 FloorNormal;
+	Double OldPosZ;
+	Double FovVel;
+	Double WallTilt;
+	Double Veleng, OldVeleng;
+	Double VelengXY;
+	Double VelAngle;
+	Double MoveAngle;
+	Double fm, sm;
+	Double MaxSpeed;
+	Bool OldGround, AirStrafe;
+	
+	Void CheckRamps(void)
+	{
+		Vector3 OldNormal = FloorNormal;
+		
+		if (player.onground)
+		{
+			F3DFloor Slomp;
+			for(int i = 0; i < FloorSector.Get3DFloorCount(); i++)
+			{
+				if(FloorSector.Get3DFloor(i).Top.ZAtPoint(Pos.XY) == FloorZ)
+				{
+					Slomp = FloorSector.Get3DFloor(i);
+					break;
+				}
+			}
+			FloorNormal = Slomp ? - Slomp.Top.Normal : FloorSector.FloorPlane.Normal;
+			
+			Bool TooSteep = Abs(FloorNormal.z) < 0.5;
+			Bool Upramp = (Vel + (0,0,Vel.xy dot -OldNormal.xy)) dot FloorNormal > -0.01;//FloorNormal.z > OldNormal.z;
+			
+			If(FloorNormal != OldNormal)
+			{
+				Vector3 RampVel;
+				If(Upramp) 
+				{
+					RampVel = OldVel - ( (OldVel dot OldNormal)*OldNormal);
+					OldGround = false;
+					FloorNormal == (0,0,1);
+				}
+				else {
+					RampVel = OldVel - ( (OldVel dot FloorNormal)*FloorNormal);
+					RampVel.z = Min(RampVel.z,0);
+				}
+				Vel = RampVel;
+			}
+			else if(!Upramp && FloorNormal.z < 0.9) {
+				Vel.xy += FloorNormal.xy*3;
+				Vel.z = -FloorNormal.z;
+			}
+			//If(TooSteep) player.onground = false;
+		}
+		else If(OldGround) 
+		{
+			If(FloorNormal != (0,0,1) )
+			{
+				Vel = OldVel - ( (OldVel dot FloorNormal)*FloorNormal);
+				OldGround = false;
+			}
+			FloorNormal = (0,0,1);
+		}
+	}
+	
+	override void MovePlayer ()
+	{
+		// Player Props and Player Command references 
+		let player = self.player;
+		UserCmd cmd = player.cmd;
+
+		if (player.turnticks)
+		{
+			player.turnticks--;
+			Angle += (180. / TURN180_TICKS);
+		}
+		else Angle += cmd.yaw * (360./65536.);
+		
+		// Check if player is onground
+		OldGround = Player.OnGround; //used so friction isnt applied in the first tick when landing
+		player.onground = (pos.z <= floorz) || bOnMobj || bMBFBouncer || (player.cheats & CF_NOCLIP2);
+		//Bool inair = !player.onground && !waterlevel;
+		
+		//base maximum move velocity
+		MaxSpeed = 5;
+		
+		//Values for checkin
+		OldVeleng = Veleng;
+		Veleng = vel.length();
+		VelengXY = vel.xy.length();
+		VelAngle = VectorAngle(Vel.X,Vel.Y);
+		AirStrafe = VelengXY > MaxSpeed+2 || !(player.onground && OldGround);//Theshold for air strafe velocity, staying below it will apply friction
+			
+		if (cmd.forwardmove | cmd.sidemove)
+		{
+			double MM; // acceletation/vel to add
+			double forwardmove, sidemove;
+			
+			fm = cmd.forwardmove;
+			sm = cmd.sidemove; 
+			[fm, sm] = TweakSpeeds (fm, sm);
+			fm *= Speed / 256; sm *= Speed / 256;
+			
+			//Set acceleration, cant go faster when trying to move diagonaly
+			MM = Min( 50, (fm,sm).Length() ) * 0.032; // * (35 / TICRATE)
+			MoveAngle = Angle -90 + VectorAngle(sm,fm);
+			VectorMove = (Cos(MoveAngle), Sin(MoveAngle));
+			Double projVel = Vel.xy dot VectorMove;//Check how much velocity the is in the direction its trying to move
+			
+			Player.vel += VectorMove*MM; //this is for view bobbing
+			
+			If (AirStrafe)// && !player.onground) 
+			{
+				MaxSpeed *= 0.4;
+				MM *= 3;
+				If( VelengXY && projVel >= 0 && CVar.GetCVar( "AutoAirStrafe", player ).GetBool() )
+				{
+					//Does the air strafing for you
+					Vector2 Straif = RotateVector(Vel.xy,-90);
+					Double StrM = (VectorMove dot Straif) / MM;
+					VectorMove = Straif.unit() * Clamp( StrM * 0.5, -1,1);
+					projVel = -100;
+				}
+			}
+			else 
+			{
+				Vector2 Straif = RotateVector(VectorMove,-90).Unit();
+				self.vel -= Straif * Clamp( Straif dot Vel.xy, -MM*0.5, MM*0.5);
+				// When crouching, speed and bobbing have to be reduced
+				if (CanCrouch() && player.crouchfactor != 1)
+				{
+					MaxSpeed *= 0.5;
+				}
+			}
+			//Increase acceleration when moving against current velocity
+			if(player.onground)
+			{
+				if(projVel < 0.2) 
+				{
+					MM *= 2;
+					player.deltaviewheight -= player.GetMoveBob()*0.5;
+				}
+			}
+			//Limit acceleration to not surpass maxspeed
+			MM = Clamp( MaxSpeed - projVel,0,MM);
+			//Finally add velocity
+			self.vel += VectorMove * MM;
+			
+			if (!(player.cheats & CF_PREDICTING) && MM != 0)
+			{
+				PlayRunning ();
+			}
+
+			if (player.cheats & CF_REVERTPLEASE)
+			{
+				player.cheats &= ~CF_REVERTPLEASE;
+				player.camera = player.mo;
+			}
+		}
+		else 
+		{
+			//new friction
+			if(!AirStrafe && player.onground && OldGround)
+			{
+				double calcfric = Max(0, 4*(1 - friction*cursector.friction) );
+				If(VelengXY) vel.xy -= vel.xy.unit() * Min(calcfric,VelengXY);
+			}
+			if(!AirStrafe) PlayIdle();
+		}
+		//Reduce viewbob when not moving
+		Player.vel *= 0.9;
+		
+		if(player.onground && OldGround)
+		{
+			if(AirStrafe) 
+			{
+				Int SpkAmount = Max(1,Veleng*0.1);
+				For(Int I; I<SpkAmount; I++)
+				{
+					VisualThinker spk = VisualThinker.Spawn("NeoSparky", TexMan.CheckForTexture("Models/grem.png"), pos - Vel*I/SpkAmount,
+					Vel*1.3 + (fRandom(-2,2),fRandom(-2,2),fRandom(0,2)), 1, 
+					SPF_FULLBRIGHT|SPF_ROLL, Random(0,359), (8,8), (0,0), STYLE_ADD );
+					NeoSparky(spk).gravity = -0.2*GetGravity();
+				}
+				A_StartSound("Ballroll",16,CHANF_LOOPING);
+				A_SoundVolume(16,Min(0.5,Veleng*0.1) );
+				A_SoundPitch(16, Min(4,Veleng*0.05)+0.6 );
+			}
+			else A_StopSound(16);
+		}
+		else A_StopSound(16);
+	}
+
+	Override void CheckCrouch(bool totallyfrozen)
+	{
+		//Moved to CheckJump
+	}
+	
+	Override void CrouchMove(int direction) //idk :P
+	{
+		//CheckFakeFloorTriggers(pos.Z + oldheight, true);
+	}
+	
+	override void CheckJump()
+	{
+		let player = self.player;
+		UserCmd cmd = player.cmd;
+		double oldheight = height;
+		Double oldfactor = player.crouchfactor;
+		Double CrouchHeight = 0.3;
+		
+		if (player.playerstate != PST_DEAD)//CanCrouch()
+		{
+			player.crouchdir = player.crouching;//Force player to crouch
+
+			if (player.crouchdir == 0) {
+				player.crouchdir = (cmd.buttons & BT_CROUCH) ? -1 : 1;
+			}
+			//else if (cmd.buttons & BT_CROUCH) player.crouching = 0;
+			
+			double crouchspeed = player.crouchdir * 0.2;
+			player.crouchfactor = clamp(player.crouchfactor + crouchspeed, CrouchHeight, 1);
+			
+			Double DesHeight = FullHeight * player.crouchfactor;
+			If(!player.Onground)
+			{
+				double zMove = Pos.z + (oldheight - DesHeight)*0.5;
+				SetOrigin( (Pos.x,Pos.y,Clamp(zMove, FloorZ, CeilingZ) ) ,true);
+			}
+			FCheckPosition Col; 
+			CheckMove(pos.xy+vel.xy+VectorMove,0,Col);
+			//FloorZ = Clamp(Col.FloorZ, FloorZ, Pos.Z+10);
+			
+			If( Pos.z+DesHeight > Col.CeilingZ && (Pos.z+DesHeight - Col.CeilingZ) <= MaxStepHeight)
+			{
+				DesHeight = Max( FullHeight*CrouchHeight, Min(Col.CeilingZ,CeilingZ) - Pos.Z);
+				player.crouchfactor = DesHeight/FullHeight;
+				//If(Col.FloorZ - Pos.z <= MaxStepHeight) SetOrigin( );
+			}
+			Height = DesHeight;
+		}
+		else
+		{
+			if (health > 0) Height = FullHeight;
+			player.Uncrouch();
+		}
+		//player.crouchoffset = -player.ViewHeight * (1 - player.crouchfactor);
+		
+		Double Addjump;
+		float maxjump = 9;
+		// Check if the player pressed or released the jump button
+		if ( player.cmd.buttons & BT_JUMP && player.onground )
+		{
+			
+			double jumpvelz = JumpZ;
+			if (player.crouchfactor < 0.8) {jumpvelz *= 0.9;}
+			
+			Addjump = Clamp( maxjump - vel.z, 0, jumpvelz);
+			
+			OldGround = false;
+			bOnMobj = false;
+			FloorNormal = (0,0,1);
+			if (!(player.cheats & CF_PREDICTING)) 
+			{
+				A_StartSound("Cjump", 2);
+				A_StartSound("Dwinko", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.02,0,0.8) );
+				//if (InStateSequence(CurState, SeeState) || InStateSequence(CurState, SpawnState) )
+				SetStateLabel("Jump");
+			}
+			
+			Vel.Z += Addjump;
+		}
+		
+		double rampup = Pos.Z-OldPosZ;
+		//This will add velocity while sliding up ramps or stairs, might make it work better
+		If(OldGround && rampup > 0 && VelengXY > 5) {//OldGround && !player.onground
+			Vel.Z = Max(Vel.z, rampup );
+		}
+		OldPosZ = Pos.Z;
+	}
+	
+	override void CheckMoveUpDown()
+	{
+		let player = self.player;
+		UserCmd cmd = player.cmd;
+
+		//change upmove with jump and crouch
+		if (cmd.buttons & BT_CROUCH) cmd.upmove = -32767;
+		if (cmd.buttons & BT_JUMP) cmd.upmove = 32767;
+		
+		if (cmd.upmove == -32768)
+		{ // Only land if in the air
+			if (bNoGravity && waterlevel < 2)
+			{
+				bNoGravity = false;
+			}
+		}
+		else if (cmd.upmove != 0)
+		{
+			// Clamp the speed to some reasonable maximum.
+			cmd.upmove = clamp(cmd.upmove, -0x300, 0x300);
+			if (bFly || (player.cheats & CF_NOCLIP2))//waterlevel >= 2 ||  
+			{
+				Vel.Z += Speed * cmd.upmove * 0.001;
+				if (waterlevel < 2 && !bNoGravity) {
+					bFly = true;
+					bNoGravity = true;
+					/*if ((Vel.Z <= -39) && !(player.cheats & CF_PREDICTING))
+					{ // Stop falling scream
+						A_StopSound(CHAN_VOICE);
+					}*/
+				}
+			}
+			else if (cmd.upmove > 0 && !(player.cheats & CF_PREDICTING))
+			{
+				let fly = FindInventory("ArtiFly");
+				if (fly != NULL)
+				{
+					UseInventory(fly);
+				}
+			}
+			
+			If(waterlevel > 1)
+			{
+				Double MaxVel = cmd.upmove > 0 ? 6 : -6;
+				Vel.Z += Clamp(MaxVel - Vel.z, -Speed, Speed);
+			}
+		}
+	}
+  
+	override bool CanCollideWith(Actor other, bool passive)
+	{
+		Double Veleng = vel.length();
+		If(!Other || Other.health <= 0 || Other.bCORPSE){Return False;}
+		else if ( Veleng > 10 && Other.bSHOOTABLE )//
+		{
+			if( RipperHit(Other) )
+			{
+				Vector3 Scenter = Pos + (0,0,height*0.5);
+				Vector3 OtherDir = Other.pos + (0,0,Other.height*0.5) - Scenter;
+				Bool Aliv = Other.Health > 0;
+				Int Damg = Clamp(5*Veleng,10,600);
+				
+				If(Aliv && Other.Mass < 10000 && !Other.bDONTTHRUST) 
+				{
+					Other.Vel = OtherDir.Unit() * Veleng*1.2;
+					If(Other.health <= 0) {Other.Vel.z = Veleng*0.6;}
+				}
+				Actor Puff = Spawn("RayPuff", Scenter + OtherDir*0.6 );
+				Puff.Vel = Other.Vel;
+				Other.TriggerPainChance("melee",true);
+				Other.DamageMobj(self, self, Damg, "melee", DMG_NO_PAIN|DMG_THRUSTLESS, angle);
+				A_StartSound("Weapons/kick",6);
+				
+				If (!Other || Other.health <= 0) 
+				{
+					If (Aliv) { A_StartSound("Bing1",21);}
+				}
+				else {
+					OtherDir = OtherDir.Unit();
+					Vel += -OtherDir * (OtherDir dot Vel) * 0.5;
+				}
+			}
+			Return False;
+		}
+		else {Return True;}
+	}
+	
+	override bool CanReceive(Inventory item)
+	{
+		if(item.getClassName() == "Z_NashMove") return false; //attempt to not get movement items if a game has one
+		return true;
+	}
+	
+	Vector3 WepBob, WepRel, WepVel;
+	
+	override void Tick()
+	{
+		OldVel = Vel;
+		
+		if (player && bWeaponLevel2Ended && !(player.cheats & CF_PREDICTING))
+		{
+			bWeaponLevel2Ended = false;
+			if (player.ReadyWeapon != NULL && player.ReadyWeapon.bPowered_Up)
+			{
+				player.ReadyWeapon.EndPowerup ();
+			}
+			if (player.PendingWeapon != NULL && player.PendingWeapon != WP_NOCHANGE &&
+				player.PendingWeapon.bPowered_Up &&
+				player.PendingWeapon.SisterWeapon != NULL)
+			{
+				player.PendingWeapon = player.PendingWeapon.SisterWeapon;
+			}
+		}
+		
+		bNOFRICTION = true;
+		Actor.Tick();
+		RipperTick();
+		
+		vector2 ADir = (cos(pitch), sin(Pitch)*level.pixelstretch);
+		double Apitch = asin(Adir.y / ADir.Length() );
+		Vector3 Dir = (cos(angle)*cos(Apitch), sin(angle)*cos(Apitch), sin(-Apitch));
+		Vector3 YDir = (cos(angle)*cos(Apitch-90), sin(angle)*cos(Apitch-90), sin(-Apitch+90));
+		Vector3 XDir = Dir cross YDir;
+		
+		WepVel += -vel + oldvel*0.8;
+		WepVel = WepVel*0.6 + (- WepBob ) * 0.2;
+		
+		WepBob.x = Clamp(WepBob.x, -20,20);
+		WepBob.y = Clamp(WepBob.y, -20,20);
+		WepBob.z = Clamp(WepBob.z, -20,20);
+		WepBob += WepVel;
+		
+		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
+		
+		if (player.playerstate == PST_LIVE && player.cmd.buttons & BT_USE && !(player.oldbuttons & BT_USE) ) 
+			A_StartSound("CTaunt",2);
+	}
+	
+	Override void CalcHeight() ///Just added vel.z to viewZ
+	{
+		let player = self.player;
+		double angle;
+		double bob;
+		bool still = false;
+
+		if (player.cheats & CF_NOCLIP2)
+		{
+			player.bob = 0;
+		}
+		else if (bNoGravity && !player.onground)
+		{
+			player.bob = min(abs(0.5 * FlyBob), MAXBOB);
+		}
+		else
+		{
+			player.bob = player.Vel dot player.Vel;
+			if (player.bob == 0)
+			{
+				still = true;
+			}
+			else
+			{
+				player.bob *= player.GetMoveBob();
+
+				if (player.bob > MAXBOB)
+					player.bob = MAXBOB;
+			}
+		}
+
+		double defaultviewheight = ViewHeight;
+
+		if (player.cheats & CF_NOVELOCITY)
+		{
+			player.viewz = pos.Z + defaultviewheight;
+
+			if (player.viewz > ceilingz-0.01)
+				player.viewz = ceilingz-0.01;
+
+			return;
+		}
+
+		if (bFly && !GetCVar("FViewBob"))
+		{
+			bob = 0;
+		}
+		else if (still)
+		{
+			if (player.health > 0)
+			{
+				angle = player.BobTimer / (120 * TICRATE / 35.) * 360.;
+				bob = player.GetStillBob() * sin(angle);
+			}
+			else
+			{
+				bob = 0;
+			}
+		}
+		else
+		{
+			angle = player.BobTimer / (ViewBobSpeed * TICRATE / 35.) * 360.;
+			bob = player.bob * sin(angle) * (waterlevel > 1 ? 0.25f : 0.5f);
+		}
+
+		// move viewheight
+		if (player.playerstate == PST_LIVE)
+		{
+			player.viewheight += player.deltaviewheight;
+
+			if (player.viewheight > defaultviewheight)
+			{
+				player.viewheight = defaultviewheight;
+				player.deltaviewheight = 0;
+			}
+			else if (player.viewheight < (defaultviewheight/2))
+			{
+				player.viewheight = defaultviewheight/2;
+				if (player.deltaviewheight <= 0)
+					player.deltaviewheight = 1 / 65536.;
+			}
+
+			if (player.deltaviewheight)
+			{
+				player.deltaviewheight += 2;
+				if (!player.deltaviewheight)
+					player.deltaviewheight = 1/65536.;
+			}
+		}
+
+		if (Alternative)
+		{
+			bob = 0;
+		}
+		player.viewz = pos.Z + Vel.z + player.viewheight*player.crouchfactor + (bob * clamp(ViewBob, 0. , 1.5)); // [SP] Allow DECORATE changes to view bobbing speed.
+
+		/*if (Floorclip && player.playerstate != PST_DEAD
+			&& pos.Z <= floorz)
+		{
+			player.viewz -= Floorclip;
+		}*/
+		if (player.viewz > ceilingz - 0.01)
+		{
+			player.viewz = ceilingz - 0.01;
+		}
+		if (player.viewz < floorz + 0.01)
+		{
+			player.viewz = floorz + 0.01;
+		}
+	}
+	
+	override Vector2 BobWeapon (double ticfrac)
+	{
+		//If( Level.IsFrozen() ) Return (0,0);
+		
+		Vector2 p1, p2, r;
+		Vector2 result;
+
+		let player = self.player;
+		if (!player) return (0, 0);
+		let weapon = player.ReadyWeapon;
+
+		if (weapon == null || weapon.bDontBob)
+		{
+			return (0, 0);
+		}
+
+		for (int i = 0; i < 2; i++)
+		{
+			// Bob the weapon based on movement speed. ([SP] And user's bob speed setting)
+			//double angle = (weapon.BobSpeed * player.GetWBobSpeed() * 35 /	TICRATE*(Level.maptime - 1 + i)) * 0.044;
+			double angle = (Level.maptime - 1 + i) * 8 * player.GetWBobSpeed();
+
+			// [RH] Smooth transitions between bobbing and not-bobbing frames.
+			// This also fixes the bug where you can "stick" a weapon off-center by
+			// shooting it when it's at the peak of its swing.
+			if (player.WeaponState & WF_WEAPONBOBBING && curbob != player.bob)
+			{
+				if (abs(player.bob - curbob) <= 1)
+				{
+					curbob = player.bob;
+				}
+				else
+				{
+					curbob += clamp( (player.bob - curbob)*0.02, -1,1);
+				}
+			}
+
+			// The weapon bobbing intensity while firing can be adjusted by the player.
+			double BobIntensity = (player.WeaponState & WF_WEAPONBOBBING) ? 1. : player.GetWBobFire();
+
+			if (curbob != 0)
+			{
+				double bobVal = player.bob;
+				if (i == 0)
+				{
+					bobVal = prevBob;
+				}
+				//[SP] Added in decorate player.viewbob checks * BobIntensity * BobIntensity
+				double bobx = (bobVal * weapon.BobRangeX * ViewBob);
+				double boby = (bobVal * weapon.BobRangeY * ViewBob);
+				switch (weapon.BobStyle)
+				{
+				case Bob_Normal:
+					r.X = bobx * cos(angle);
+					r.Y = boby * abs(sin(angle));
+					break;
+
+				case Bob_Inverse:
+					r.X = bobx*cos(angle);
+					r.Y = boby * (1. - abs(sin(angle)));
+					break;
+
+				case Bob_Alpha:
+					r.X = bobx * sin(angle);
+					r.Y = boby * abs(sin(angle));
+					break;
+
+				case Bob_InverseAlpha:
+					r.X = bobx * sin(angle);
+					r.Y = boby * (1. - abs(sin(angle)));
+					break;
+
+				case Bob_Smooth:
+					r.X = bobx*cos(angle);
+					r.Y = boby * ( sin(2*angle) + 0.5);
+					//r.Y = 0.5f * (boby * (1. - (cos(angle * 2))));
+					break;
+
+				case Bob_InverseSmooth:
+					r.X = bobx*cos(angle);
+					r.Y = 0.5f * (boby * (1. + (cos(angle * 2))));
+				}
+			}
+			else
+			{
+				r = (0, 0);
+			}
+			if (i == 0) p1 = r; else p2 = r;
+		}
+		
+		return p1 * (1. - ticfrac) + p2 * ticfrac + WepRel.xy;
+	}
+	
+	Override Vector3, Vector3 BobWeapon3D (double ticfrac)
+	{
+		Vector2 oldBob = BobWeapon(ticfrac);
+		return ( oldBob.x, -oldBob.y, WepRel.z)*0.5, ( 0, 0, Roll);//( oldBob.x*0.2, -oldBob.y*0.2, Roll)
+	}
+}
+
+mixin class NeoRipper //arrays and functions to make a ripper projectile hit an enemy only on the first tick of collision
+{
+	array<actor> hitactors;
+	array<int> hittime;
+	
+	void RipperTick() //Called every tic
+	{
+		For(int a; a < hitActors.Size(); a++)
+		{
+			if(hittime[a]) hittime[a]--;
+			else hitActors[a] = null;
+		}
+	}
+	
+	bool RipperHit(actor victim, int time = 2) //Called to check if thing should be hit
+	{
+		Bool washit; 
+		int slot = -1;
+		For(int a; a<hitActors.Size(); a++)
+		{
+			If(!hitActors[a]) slot = a;
+			If(hitActors[a] == victim) {washit = True; hittime[a] = time;}
+		}
+		If(!wasHit) 
+		{
+			If(slot >= 0) {hitActors[slot] = victim; hittime[slot] = time;}
+			else {hitActors.Push(victim); hittime.Push(time);}
+		}
+		Return !wasHit;
+	}
+}
+
+Class BodyCollider : actor
+{
+	Default
+	{
+ 		DamageFunction 0;
+		ReactionTime 0;
+		ProjectileKickBack 1;
+		Projectile;
+		MaxStepHeight 5;
+		BounceFactor 1;
+		+FLATSPRITE
+		+STEPMISSILE 
+		+DONTREFLECT
+		//+USEBOUNCESTATE
+		+ALLOWBOUNCEONACTORS
+		+BOUNCEONCEILINGS
+		+BOUNCEONACTORS
+		+BOUNCEONWALLS
+		+BOUNCEONFLOORS
+	}
+	
+	Override void Tick()
+	{
+		Super.Tick();
+		If(target)
+		{
+			A_SetSize(target.radius,target.height);
+			Vel = target.vel;
+			SetOrigin(target.pos + Vel,true);
+			angle = 0;
+			//pitch = target.pitch;
+			//roll = target.roll;
+		}
+		else Destroy();
+	}
+	
+	Override int SpecialBounceHit(Actor bounceMobj, Line bounceLine, readonly<SecPlane> bouncePlane, bool is3DFloor)
+	{
+		If(bounceLine)
+		{
+			bool opend;
+			if(Cuete(target).AirStrafe) opend = MoveTech.BreakOpenDoor(target, bounceLine, Vel.Unit() );
+			If(opend) {
+				A_StartSound("Bing1",21);
+				A_StartSound("BoulderDrop",22);
+			}
+			Return 1;
+		}
+		
+		If(bounceMobj) Return -1;
+		
+		Return 1;
+	}
+	
+	States{
+    Spawn:
+		PBOX YY -1;
+		Loop;
+	}
+}
+
+Class MoveTech : Weapon 
+{
+	Actor Flash;
+	Vector3 LookDir;
+	FLineTraceData Bule;
+	Double Zofs;
+	Bool hit, boost;
+	
+	Vector3 RayPos, MuzPos;
+	Double RayScale;
+	
+	//mixin NeoRipper;
+	
+	clearscope static Vector3 Vec3FromAngle (Double Length, Double Angle, Double Pitch)
+	{
+		Return (cos(angle)*cos(pitch), sin(angle)*cos(pitch), sin(-Pitch))*Length;
+	}
+	
+	Default
+	{
+		Weapon.SelectionOrder 100;
+		Weapon.SlotNumber 1;
+		weapon.ammotype1 "TechAmmo";
+	}
+	States {
+		Spawn:
+		TNT1 A -1;
+		Stop;
+		
+		Select:
+		TNT1 A 0 A_Overlay(-5,"Functions");
+		TNT1 A 0 A_Raise(1000);
+		Loop;
+		
+		Functions:
+		TNT1 A 1 {
+			If(player.cmd.buttons & BT_RELOAD){Angle += 180; Pitch *= -1;}
+		
+			invoker.LookDir = MoveTech.Vec3FromAngle(1, Angle, Pitch);
+			invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
+			invoker.hit = LineTrace(Angle, 4000, Pitch, 0, invoker.Zofs, 0, 0, invoker.Bule);
+			
+			invoker.boost = invoker.bule.distance <= 80 + Max(0,Vel dot invoker.LookDir);
+			
+			invoker.MuzPos = Pos + (0,0,invoker.Zofs) + invoker.LookDir*14 + MoveTech.Vec3FromAngle(5, Angle, Pitch+90) + Cuete(self).WepBob*0.4;
+		
+			If(player.cmd.buttons & BT_RELOAD){Angle -= 180; Pitch *= -1;}
+			
+			If(Countinv("TechAmmo")<23 ) GiveAmmo("TechAmmo",1);
+		}
+		Loop;
+		
+		Deselect:
+		TNT1 A 0 A_Lower(1000);
+		Loop;
+		
+		Ready:
+		RLBS A 1 {
+			If(player.cmd.buttons & BT_ATTACK && CountInv("TechAmmo")>22 )
+			{
+				Return ResolveState("Fire");
+			}
+			If( player.cmd.buttons & BT_ALTATTACK && CountInv("TechAmmo")>22)
+			{
+				Return ResolveState("AltFire");
+			}
+			Player.Refire = 0;
+			A_WeaponReady(WRF_NOFIRE);
+			Return ResolveState(null);
+		}
+		Loop;
+		
+		Fire:
+		RLBS A 0 {
+			invoker.reactiontime = 5;
+			SetInventory("TechAmmo",0);
+			invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
+			invoker.Flash.Vel = Vel;
+			invoker.Flash.Scale = (0.3,0.3);
+			invoker.Flash.Tics++;
+			
+			Cuete(self).WepVel += MoveTech.Vec3FromAngle(5, Angle, Pitch+90);
+		}
+		RayShoot:
+		RLBS A 1 {
+			invoker.reactiontime--;
+			Actor Puff;
+			Vector3 Recoil = invoker.LookDir*-1;
+			Bool hitenemy;
+			
+			invoker.Flash.Vel = Vel;
+			invoker.Flash.SetOrigin(Invoker.MuzPos,1);
+			invoker.Flash.Tics++;
+				
+			if(invoker.hit)
+			{
+				//A_quakeEx(5,0,0,5,0,50,"",QF_RELATIVE|QF_SCALEDOWN,0,0,0,0,0,3);
+				If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE ) //if it hit an actor and its shootable
+				{
+					Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
+					invoker.reactiontime = 0;
+					invoker.Bule.HitActor.DaggerAlert(self);
+					
+					Int kDamg = 150;
+					if(invoker.boost) {
+						kDamg = Max(200, 15*Vel.Length() );
+					}
+					
+					if( invoker.Bule.HitActor.Mass < 10000000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+					{
+						Double Push = kDamg * 0.4;
+						if(invoker.Bule.HitActor.bISMONSTER) Push = max(0.2, 0.44 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg; //if its a monster make the push depend on mass
+						Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
+						if(invoker.Bule.HitActor.Pos.Z <= invoker.Bule.HitActor.Floorz || invoker.Bule.HitActor.bOnMobj) KickVel.z = Max( KickVel.z, Push*0.2 ); //up boost if enemy is on floor
+						invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
+					}
+					invoker.Bule.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
+					hitenemy = true;
+				}
+				
+				If(invoker.boost)
+				{
+					invoker.reactiontime = 0;
+					Recoil = invoker.LookDir*-9;
+					//If(hitenemy) Recoil *= -1;
+					
+					If (invoker.Bule.HitLine) //if it hit a line
+					{
+						Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
+						Bool Opened = BreakOpenDoor(Self, invoker.Bule.HitLine, invoker.Bule.HitDir);
+						If(Opened) {
+							Recoil = invoker.LookDir*4;
+							Puff.A_SprayDecal("Scorch", 30, (0,0,1), invoker.Bule.HitDir );
+							A_StartSound("BoulderDrop",7);
+						}
+					}
+					A_StartSound("SnareDrum",8, 0, 1, 1, Clamp(0.8+(-invoker.LookDir dot vel*0.04), 0.5, 5) );
+				}
+			}
+			If(!invoker.reactiontime) 
+			{
+				Vel += Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 1.5 );
+				
+				invoker.Flash.Vel = (0,0,0);
+				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
+				Vector3 Dir = invoker.Bule.HitLocation - Ray.Pos;
+				Ray.Angle = VectorAngle(Dir.x,Dir.y);
+				Ray.Pitch = VectorAngle(Dir.xy.Length(),-Dir.Z)+90;
+				Ray.Scale = (1, Dir.Length());
+				if(hitenemy) Ray.Scale.x *= 2;
+				if(Invoker.Boost) Ray.Scale.x *= 3;
+					
+				Invoker.RayPos = Invoker.MuzPos;
+				Invoker.RayScale = Ray.Scale.x;
+				A_Overlay(2,"RayTrail");
+				A_StartSound("RayShot",1);
+				if(!puff) Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
+				Puff.A_StartSound("ricochet",7);
+				Cuete(self).WepVel += invoker.LookDir*-30;
+				
+				Return ResolveState("Ready");
+			}
+			Return ResolveState(Null);
+		}
+		Loop;
+		
+		AltFire:
+		RLBS A 1
+		{
+			if(CountInv("TechAmmo") ) 
+			{
+				if(!invoker.Flash)
+				{
+					invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
+					invoker.Flash.Tick();
+					invoker.Flash.Vel = Vel;
+					invoker.Flash.Scale = (0.3,0.3);
+					invoker.Flash.Tics++;
+				}
+				invoker.Flash.Vel = Vel;
+				invoker.Flash.SetOrigin(Invoker.MuzPos,1);
+				invoker.Flash.Tics++;
+				invoker.Flash.Roll = Random(1,360);
+				A_StartSound("WoolShear",7,0,0.8,1,1);
+			
+				Cuete(self).WepVel += invoker.LookDir*5;
+				Bool hitenemy;
+				
+				if(invoker.Boost && invoker.hit)
+				{
+					//A_quakeEx(5,0,0,5,0,50,"",QF_RELATIVE|QF_SCALEDOWN,0,0,0,0,0,3);
+					Int kDamg = Max(16, 6*Vel.Length() );
+					
+					Actor Puff;
+					
+					Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir);
+					Puff.Scale = (0.2,0.2);
+					Puff.A_StartSound("ricochet",7,0,0.4,1,1.6);
+				
+					If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE)
+					{
+						invoker.Bule.HitActor.DaggerAlert(self);
+						
+						if( invoker.Bule.HitActor.Mass < 10000000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+						{
+							Double Push = kDamg * 0.4;
+							if(invoker.Bule.HitActor.bISMONSTER) Push = max(0.2, 0.44 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg; //if its a monster make the push depend on mass
+							Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
+							invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
+						}
+						invoker.Bule.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
+						hitenemy = true;
+					}
+					
+					
+					Double Recoil = 1.2;
+					
+					If (invoker.Bule.HitLine) //if it hit a line
+					{
+						Bool Opened = BreakOpenDoor(Self, invoker.Bule.HitLine, invoker.Bule.HitDir);
+						If(Opened) {
+							Recoil = 6;
+							Puff.A_SprayDecal("BulletChip",30,(0,0,-1),invoker.Bule.HitDir);
+							Puff.A_StartSound("BoulderDrop",7);
+						}
+					}
+					
+					Vel += invoker.LookDir * Clamp( Recoil*20 - (Vel dot invoker.LookDir),0,Recoil);
+					
+					If(hitenemy)
+					{
+						Actor Ray = Spawn("RayTracer", Pos + (0,0,invoker.Zofs) );
+						Ray.Angle = angle;
+						Ray.Pitch = pitch+90;
+						Ray.Scale = (1, invoker.Bule.Distance);
+					}
+				}
+				TakeInventory("TechAmmo",2);
+			}
+			if(CountInv("TechAmmo") < 1 ) Return ResolveState("Ready");
+			Return ResolveState(null);
+		}
+		Loop;
+		
+		RayTrail:
+		TNT1 A 1
+		{
+			Vector3 RayPis = Invoker.MuzPos;
+			Vector3 RayDir = Invoker.RayPos - RayPis;
+			Invoker.RayPos = RayPis;
+			Actor Ray = Spawn("RayTracer", RayPis);
+			Ray.Angle = VectorAngle(RayDir.x,RayDir.y);
+			Ray.Pitch = -VectorAngle(RayDir.xy.length(),RayDir.Z)+90;
+			Ray.Scale.Y = RayDir.length()* level.pixelstretch;//0.01 + (RayDir.length() * level.pixelstretch)/ 1.2;
+			Ray.Scale.X = Invoker.RayScale;
+			Invoker.RayScale = Invoker.RayScale * 0.9 - 0.05;
+			//Ray.SetShade("ffdddf");
+			
+			if(Invoker.RayScale < 0) Return ResolveState("null");
+			Return ResolveState(null);
+		}
+		Loop;
+	}
+	
+	static clearscope int GetLineLock( Line l ) 
+	{
+        int locknum = l.locknumber;
+        if ( !locknum ) {
+            // check the special
+            switch ( l.special ) {
+            case FS_Execute:
+                locknum = l.Args[2];
+                break;
+            case Door_LockedRaise:
+            case Door_Animated:
+                locknum = l.Args[3];
+                break;
+            case ACS_LockedExecute:
+            case ACS_LockedExecuteDoor:
+            case Generic_Door:
+                locknum = l.Args[4];
+                break;
+            }
+        }
+        return locknum;
+    }
+	
+	static bool BreakOpenDoor(Actor Obj, Line Door, Vector3 HitDir)
+	{
+		Int Lspec = Door.special;
+		//A_Logint(lspec);
+		
+		//check if line is a door that opens moving up and check if you have its key
+		If ( (Lspec == 202 ||Lspec == 10|| Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274)
+		&& Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector)
+		{
+			Double DoorRaise = Door.Frontsector.CeilingPlane.ZatPoint(Door.Frontsector.centerSpot) - 6; //estimation of the height the door opens at
+			//DoorRaise = Max(DoorRaise, Pos.z + height + 20); //making real sure you can pass through
+			Double PointZC = Door.backsector.CeilingPlane.ZatPoint(Door.backsector.centerSpot); //height of the door rn
+			
+			Door.backsector.MoveCeiling(1000,DoorRaise,-1,1,0); //move the door open
+			 
+			//spawn random smoke around the line
+			Vector2 PointA = (Door.Bbox[2],Door.Bbox[1]); //one edge
+			Vector2 PointAB = (Door.Bbox[3],Door.Bbox[0]) - PointA; //vector thats the lines length and direction
+			//Double PointZF = Door.backsector.FloorPlane.ZatPoint(Door.backsector.centerSpot);
+			Double PointZF = DoorRaise - PointZC; //how much the door moved
+			
+			If(Door.delta.x*Door.delta.y < 0) //if it goes the other way tbh i dont remember
+			{
+				PointA = (Door.Bbox[3],Door.Bbox[1]);
+				PointAB = (Door.Bbox[2],Door.Bbox[0]) - PointA; 
+			}
+			
+			float dist = pointAB.Length()*0.2; //how much debree to spawn
+			for (int U = 0; U < Dist; U++)
+			{
+				Float RanPos = Frandom(0,1); //used bellow to get a random position along the line
+				actor Debri = Spawn("IceChunk", (PointA.X + RanPos*PointAB.X , PointA.Y + RanPos*PointAB.Y , PointZC + random(0,PointZF) ) );
+				Debri.bROLLSPRITE = true;
+				Debri.Roll = Random(0,360);
+				Debri.bXFLIP = Random(0,1);
+				Debri.bYFLIP = Random(0,1);
+				Debri.Target = Obj;
+				Debri.Vel = HitDir * ( (HitDir dot Obj.Vel) + Random(0,5) ) + ( Frandom(-4,4),Frandom(-4,4),Frandom(-2,4));
+			}
+			//IceChunk
+			Return True;
+		}
+		else Door.Activate(Obj, 0, SPAC_Use); //else just try using the line
+		Return False;
+	}
+}
+
+Class TechAmmo : Ammo
+{
+	Default {
+		Inventory.Amount 1;
+		Inventory.MaxAmount 60;
+		Inventory.Icon "CLIPA0";
+		Scale 0.02;
+	}
+	States
+	{
+		Spawn:
+		  MRSF L -1;
+			Loop;
+	}
+}
+
+Class MoveBlur : actor
+{
+	Default{
+		RenderStyle "Translucent";
+		+NOINTERACTION
+	}
+	States{
+    Spawn:
+		"####" # 0;
+		"####" # 1 {
+			If(GetRenderStyle() == STYLE_Normal) {A_SetRenderStyle(Alpha,STYLE_Translucent);}
+			else If(GetRenderStyle() == STYLE_Stencil) {A_SetRenderStyle(Alpha,STYLE_TranslucentStencil);}
+			Alpha *= 0.001;
+		}
+		"####" # 0 {Alpha *= 700;}
+		"####" #### 1 {Alpha *= 0.6;}
+	Stop;
+	}
+}
+
+Class RayPuff : Actor
+{
+	Default
+	{
+		//Scale 0.5;
+		+NOINTERACTION;
+		+ALLOWPARTICLES;
+		+PUFFONACTORS;
+		+FORCEXYBILLBOARD;
+		+ROLLSPRITE;
+		+ROLLCENTER;
+		//RenderStyle "Add"
+	}
+	States
+	{
+	Spawn:
+		FPUF A 0 BRIGHT NODELAY A_SetRoll(random(0,359));
+		FPUF AAAAAA 0 BRIGHT A_SpawnParticle("47cf5d",SPF_FULLBRIGHT,8,10,0,0,0,0,random(-5,5)*Scale.x,random(-5,5)*Scale.x,random(-5,5)*Scale.y,0,0,0,1,0,-0.6);
+		FPUF A 1 BRIGHT;
+		FPUF ABB 1 BRIGHT {Scale *= 1.4;}
+		FPUF CDEF 2 BRIGHT;
+		Stop;
+	}
+}
+Class RayTracer : Actor
+{
+	Default 
+	{
+		Height 1;
+		+NOCLIP
+		+FLATSPRITE
+		+NoGravity
+		+WINDTHRUST
+		RenderStyle "Add";
+	}
+	States
+	{
+		Spawn:
+		LZBM D 3 BRIGHT NODELAY;
+		Fade:
+		LZBM D 1 {Scale.X = Scale.X*0.8 - 0.01; if(Scale.X < 0) Destroy();} 
+		loop;
+	}
+}
+
+Class NeoSparky : VisualThinker
+{
+	float gravity;
+	override void Tick()
+	{
+		super.Tick();
+		Vel *= 0.9;
+		Vel.z += gravity;
+		Scale = Scale*0.9 - (0.1,0.1);
+		If(Scale.x < 0) Destroy();
+	}
+}
+
+class CueteHud : BaseStatusBar
+{
+	Vector3 WobOfs, WobOld;
+	Double crscl, orscl;
+	HUDFont mHUDFont;
+	HUDFont BHUDFont;
+	
+	ui int screenOfsX, screenOfsY, screenSizeX, screenSizeY;
+	
+	override void Init(void)
+	{
+		Super.Init();
+		Font fnt = SmallFont;
+		mHUDFont = HUDFont.Create(fnt, fnt.GetCharWidth("0"), Mono_CellLeft, 1, 1);
+		BHUDFont = HUDFont.Create(BigFont, BigFont.GetCharWidth("0"), Mono_CellLeft, 2, 2);
+		SetSize(0, 320, 200);
+	}
+	
+	
+	virtual void DrawKeys(PlayerInfo CPlayer, double x, double y, double scale)
+	{
+		int Keyswidth;
+		Key inv;
+		Array<TextureID> icons;
+
+		if (!deathmatch)
+		{
+			int count = Key.GetKeyTypeCount();
+			if(!count) Return;
+			// Go through the key in reverse order of definition, because we start at the right.
+			for(int i=0; i < count; i++)
+			{
+				if ((inv = Key(CPlayer.mo.FindInventory(Key.GetKeyType(i)))))
+				{
+					TextureID icon;
+					
+					TextureID AltIcon = inv.AltHUDIcon;
+					if (!AltIcon.Exists()) continue;	// Setting a non-existent AltIcon hides this key.
+
+					if (AltIcon.isValid()) 
+					{
+						icon = AltIcon;
+					}
+					else if (inv.SpawnState && inv.SpawnState.sprite!=0)
+					{
+						let state = inv.SpawnState;
+						if (state != null) icon = state.GetSpriteTexture(0);
+						else icon.SetNull();
+					}
+					// missing sprites map to TNT1A0. So if that gets encountered, use the default icon instead. || icon == TNT1A0
+					if (icon.isNull()) icon = inv.Icon; 
+
+					if (icon.isValid()) icons.Push(icon);
+				}
+			}
+			
+			int keyscount = icons.Size();
+			if(!keyscount) Return;
+			double keyAngle = 120*log(keyscount+1);
+			for(int i=0; i < keyscount; i++)
+			{
+				vector2 texsize = TexMan.GetScaledSize(icons[i]) * scale;
+				Double kchainfrac = keyAngle/keyscount;
+				vector2 circle = actor.AngleToVector( kchainfrac*(i+0.5) - keyAngle*0.5 +90, 4 + 3*keyscount ) * scale;
+				
+				screen.DrawTexture(icons[i], true, x + circle.x, y + circle.y,
+					DTA_Alpha, 1, DTA_CenterOffset, true,
+					DTA_ScaleX, scale, DTA_ScaleY, scale);
+			}
+		}
+		Return;
+	}
+
+	override void Draw(int state, double TicFrac)
+	{
+		Super.Draw (state, TicFrac);
+		
+		[screenOfsX,screenOfsY,screenSizeX,screenSizeY] = screen.GetViewWindow();
+		
+		Vector3 wOfs = WobOld + (WobOfs-WobOld)*TicFrac;
+		wOfs.Z = 1 + 0.01*wOfs.z;
+		
+		if (state == HUD_StatusBar || state == HUD_Fullscreen)
+		{
+			BeginHUD();
+	
+			DrawString(mHUDFont, "HP:" .. CPlayer.mo.Health, (0, -screenSizeY*0.1) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			//CPlayer.mo.GetMaxHealth(true)
+			Ammo am1, am2;
+			int am1amt, am2amt;
+			[am1, am2, am1amt, am2amt] = GetCurrentAmmo();
+			String AmmoTxt;
+			
+			if(am1) AmmoTxt.AppendFormat("%s %i", "AMO:", am1amt);
+			if(am2) AmmoTxt.AppendFormat("%s %i", "ALT:", am1amt);
+			
+			if(AmmoTxt)
+			{
+				DrawString(mHUDFont, AmmoTxt, (0, -screenSizeY*0.1 + 15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
+			}
+			
+			DrawString(mHUDFont, String.Format("%s %.2f", "VL:", Cuete(CPlayer.mo).Veleng), (0, -screenSizeY*0.1 + 30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			DrawKeys(CPlayer, screenSizeX*0.5 + wOfs.x, screenSizeY*0.78 + wOfs.y + 100*wOfs.z, 2*wOfs.z);
+			
+			
+			If(CPlayer.readyweapon is "MoveTech" )
+			{
+				double bscl = orscl + (crscl-orscl)*TicFrac;
+				String crs = MoveTech(CPlayer.readyweapon).boost ? "LZBMB0" : "LZBMA0";
+				
+				Screen.DrawTexture(TexMan.CheckForTexture(crs) ,
+					false, screenSizeX*0.5, screenSizeY*0.5,
+					DTA_ScaleX, bscl, DTA_ScaleY, bscl,
+					//DTA_LegacyRenderStyle, STYLE_Shaded,
+					//DTA_Color, CrshColor,
+					DTA_Rotate, CPlayer.mo.roll );
+			}
+		}
+	}
+	
+	override void Tick()
+	{
+		WobOld = WobOfs;
+		WobOfs = Cuete(CPlayer.mo).WepRel;
+		
+		If(CPlayer.readyweapon is "MoveTech" )
+		{
+			orscl = crscl;
+			Double TanFov = Tan(CPlayer.Fov*0.5);
+			double bscl = ( 160/tanfov ) / Max( MoveTech(CPlayer.readyweapon).bule.distance,1);
+			bscl *= 3;
+			crscl = bscl;
+		}
+		super.Tick();
+	}
+}
