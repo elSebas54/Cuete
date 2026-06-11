@@ -17,10 +17,12 @@ Class Cuete : DoomPlayer
 		Player.AttackZOffset 5;
 		Player.ViewHeight 19;
 		Player.GruntSpeed 10;
+		Player.CrouchSprite "";
+		
 		MaxStepHeight 10;
 		Mass 20;
 		Gravity 0.25;
-		MaxSlopeSteepness 0;
+		MaxSlopeSteepness 0.5;
 		Player.AirCapacity -1;
 		GibHealth 50;
 
@@ -38,28 +40,28 @@ Class Cuete : DoomPlayer
 	States
 	{
 		See:
-			PLAY ABAC 4 {
-				A_SetTics( Clamp(30/VelengXY,2,6) );
+			PLAY BCDE 4 {
+				A_SetTics( Clamp(20/VelengXY,2,6) );
 			}
 			Loop;
 		Jump:
-			PLAY ADD 2;
+			PLAY AFF 2;
 		InAir:
-			PLAY E 2 {if(player.onground) SetState(SeeState);}
+			PLAY G 2 {if(player.onground) SetState(SeeState);}
 			Loop;
 		Pain:
-			PLAY F 4 A_Pain();
-			PLAY E 2;
+			PLAY G 4 A_Pain();
+			PLAY H 2;
 			Goto Spawn;
 		Death:
-			PLAY F 1 {
+			PLAY H 1 {
 				Vel.z += 4*GetGravity();
 				A_StartSound("Cdeath", 2);//A_PlayerScream();
 			} 
-			PLAY FFFFFFFFF 1;//{Pitch += 10; Roll += 10;}
+			PLAY HHHHHHHHH 1;//{Pitch += 10; Roll += 10;}
 			Goto Crush;
 		Xdeath:
-			PLAY F 2 A_StartSound("Cdeath", 2);
+			PLAY H 2 A_StartSound("Cdeath", 2);
 		Crush:
 			TNT1 A -1 {
 				A_StopAllSounds();
@@ -82,6 +84,8 @@ Class Cuete : DoomPlayer
     {
         super.BeginPlay();
 		Actor ring = Spawn("BodyCollider",Pos);
+		ring.target = self;
+		ring = Spawn("BodyFrame",Pos);
 		ring.target = self;
 	}
   
@@ -326,6 +330,7 @@ Class Cuete : DoomPlayer
 				//If(Col.FloorZ - Pos.z <= MaxStepHeight) SetOrigin( );
 			}
 			Height = DesHeight;
+			Scale.y = Default.Scale.y * player.crouchfactor;
 		}
 		else
 		{
@@ -431,8 +436,8 @@ Class Cuete : DoomPlayer
 				
 				If(Aliv && Other.Mass < 10000 && !Other.bDONTTHRUST) 
 				{
-					Other.Vel = OtherDir.Unit() * Veleng*1.2;
-					If(Other.health <= 0) {Other.Vel.z = Veleng*0.6;}
+					Other.Vel = OtherDir.Unit() * (0.3 -other.mass*0.0004 ) * Damg;
+					If(Other.health <= 0) {}
 				}
 				Actor Puff = Spawn("RayPuff", Scenter + OtherDir*0.6 );
 				Puff.Vel = Other.Vel;
@@ -442,7 +447,10 @@ Class Cuete : DoomPlayer
 				
 				If (!Other || Other.health <= 0) 
 				{
-					If (Aliv) { A_StartSound("Bing1",21);}
+					If (Aliv) { 
+						A_StartSound("Bing1",21);
+						if(other) {Other.Vel += Vel + (0,0,Veleng*0.6); Puff.Vel = Other.Vel*0.9;}
+					}
 				}
 				else {
 					OtherDir = OtherDir.Unit();
@@ -762,7 +770,7 @@ mixin class NeoRipper //arrays and functions to make a ripper projectile hit an 
 	}
 }
 
-Class BodyCollider : actor
+Class BodyCollider : actor //used for detecting walls
 {
 	Default
 	{
@@ -790,7 +798,7 @@ Class BodyCollider : actor
 		{
 			A_SetSize(target.radius,target.height);
 			Vel = target.vel;
-			SetOrigin(target.pos + Vel,true);
+			SetOrigin(target.pos,true);
 			angle = 0;
 			//pitch = target.pitch;
 			//roll = target.roll;
@@ -807,6 +815,7 @@ Class BodyCollider : actor
 			If(opend) {
 				A_StartSound("Bing1",21);
 				A_StartSound("BoulderDrop",22);
+				target.vel = vel;
 			}
 			Return 1;
 		}
@@ -814,6 +823,35 @@ Class BodyCollider : actor
 		If(bounceMobj) Return -1;
 		
 		Return 1;
+	}
+	
+	States{
+    Spawn:
+		TNT1 AA -1;
+		Loop;
+	}
+}
+
+Class BodyFrame : actor
+{
+	Default
+	{
+		RenderStyle "translucent";
+		Alpha 0.6;
+		+FLATSPRITE;
+		+NOINTERACTION;
+		+BRIGHT;
+	}
+	
+	Override void Tick()
+	{
+		Super.Tick();
+		If(target)
+		{
+			Vel = target.vel;
+			SetOrigin(target.pos + Vel.xy,true);
+		}
+		else Destroy();
 	}
 	
 	States{
@@ -1054,14 +1092,6 @@ Class MoveTech : Weapon
 					
 					Vel += invoker.LookDir * Clamp( Recoil*20 - (Vel dot invoker.LookDir),0,Recoil);
 					A_StartSound("WoolShear",1,0,0.8,1, 0.8 + Clamp(invoker.LookDir dot vel*0.05, -Recoil, Recoil)*0.3 );
-					
-					If(hitenemy)
-					{
-						Actor Ray = Spawn("RayTracer", Pos + (0,0,invoker.Zofs) );
-						Ray.Angle = angle;
-						Ray.Pitch = pitch+90;
-						Ray.Scale = (1, invoker.Bule.Distance);
-					}
 				}
 				TakeInventory("TechAmmo",2);
 			}
@@ -1081,6 +1111,7 @@ Class MoveTech : Weapon
 			Ray.Pitch = -VectorAngle(RayDir.xy.length(),RayDir.Z)+90;
 			Ray.Scale.Y = RayDir.length()* level.pixelstretch;//0.01 + (RayDir.length() * level.pixelstretch)/ 1.2;
 			Ray.Scale.X = Invoker.RayScale;
+			Ray.Frame = 4;
 			Invoker.RayScale = Invoker.RayScale * 0.9 - 0.05;
 			//Ray.SetShade("ffdddf");
 			
@@ -1116,23 +1147,36 @@ Class MoveTech : Weapon
 	static bool BreakOpenDoor(Actor Obj, Line Door, Vector3 HitDir)
 	{
 		Int Lspec = Door.special;
-		//A_Logint(lspec);
+		Obj.A_Logint(lspec);
+		
+		bool RaiseDoor = (Lspec == 202 ||Lspec == 10|| Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274);
+		bool LowerDoor = Lspec == 206 || Lspec == 242;
 		
 		//check if line is a door that opens moving up and check if you have its key
-		If ( (Lspec == 202 ||Lspec == 10|| Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274)
-		&& Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector)
+		If ( (RaiseDoor || LowerDoor) && Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector)
 		{
-			Double DoorRaise = Door.Frontsector.CeilingPlane.ZatPoint(Door.Frontsector.centerSpot) - 6; //estimation of the height the door opens at
-			//DoorRaise = Max(DoorRaise, Pos.z + height + 20); //making real sure you can pass through
-			Double PointZC = Door.backsector.CeilingPlane.ZatPoint(Door.backsector.centerSpot); //height of the door rn
-			
-			Door.backsector.MoveCeiling(1000,DoorRaise,-1,1,0); //move the door open
+			Double DoorMove;
+			Double PointZC;
+			if(RaiseDoor)
+			{
+				DoorMove = Door.Frontsector.CeilingPlane.ZatPoint(Door.Frontsector.centerSpot) - 6; //estimation of the height the door opens at
+				//DoorMove = Max(DoorMove, Pos.z + height + 20); //making real sure you can pass through
+				PointZC = Door.backsector.CeilingPlane.ZatPoint(Door.backsector.centerSpot); //height of the door rn
+				
+				Door.backsector.MoveCeiling(1000,DoorMove,-1,1,0); //move the door open
+			}
+			else if(LowerDoor)
+			{
+				DoorMove = Door.Frontsector.FloorPlane.ZatPoint(Door.Frontsector.centerSpot);
+				PointZC = Door.backsector.FloorPlane.ZatPoint(Door.backsector.centerSpot);
+				Door.backsector.MoveFloor(1000, Door.Frontsector.FloorPlane.PointToDist(Door.Frontsector.centerSpot,DoorMove) - 6 ,-1,-1,0,1);
+			}
 			 
 			//spawn random smoke around the line
 			Vector2 PointA = (Door.Bbox[2],Door.Bbox[1]); //one edge
 			Vector2 PointAB = (Door.Bbox[3],Door.Bbox[0]) - PointA; //vector thats the lines length and direction
 			//Double PointZF = Door.backsector.FloorPlane.ZatPoint(Door.backsector.centerSpot);
-			Double PointZF = DoorRaise - PointZC; //how much the door moved
+			Double PointZF = DoorMove - PointZC; //how much the door moved
 			
 			If(Door.delta.x*Door.delta.y < 0) //if it goes the other way tbh i dont remember
 			{
@@ -1229,14 +1273,15 @@ Class RayTracer : Actor
 		+FLATSPRITE
 		+NoGravity
 		+WINDTHRUST
+		+BRIGHT
 		RenderStyle "Add";
 	}
 	States
 	{
 		Spawn:
-		LZBM D 3 BRIGHT NODELAY;
+		LZBM D 3 NODELAY;
 		Fade:
-		LZBM D 1 {Scale.X = Scale.X*0.8 - 0.01; if(Scale.X < 0) Destroy();} 
+		LZBM # 1 {Scale.X = Scale.X*0.8 - 0.01; if(Scale.X < 0) Destroy();} 
 		loop;
 	}
 }

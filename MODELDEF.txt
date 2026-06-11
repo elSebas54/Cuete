@@ -16,8 +16,8 @@ Model Cuete
 	FrameIndex PLAY D 0 3
 	FrameIndex PLAY E 0 4
 	FrameIndex PLAY F 0 5
-	FrameIndex PLAY G 0 0
-	FrameIndex PLAY H 0 0
+	FrameIndex PLAY G 0 6
+	FrameIndex PLAY H 0 7
 	FrameIndex PLAY I 0 0
 	FrameIndex PLAY J 0 0
 	FrameIndex PLAY K 0 0
@@ -47,11 +47,22 @@ Model MoveTech
 Model RayTracer
 { 
 	Path "Models" 
-	SKIN 0 "grem.png" 
+	SKIN 0 "Ray.png" 
 	MODEL 0 "Ray.md3"
 	DONTCULLBACKFACES
 	USEACTORPITCH
 	USEACTORROLL
 	//CORRECTPIXELSTRETCH
 	FrameIndex LZBM D 0 0
+}
+Model RayTracer
+{ 
+	Path "Models" 
+	SKIN 0 "grem.png" 
+	MODEL 0 "Ray.md3"
+	DONTCULLBACKFACES
+	USEACTORPITCH
+	USEACTORROLL
+	//CORRECTPIXELSTRETCH
+	FrameIndex LZBM E 0 0
 }
