@@ -188,7 +188,7 @@ Class Cuete : DoomPlayer
 			{
 				A_StartSound("*grunt", CHAN_VOICE, CHANF_NORUMBLE);
 			}
-			else if(vel.z<=0) A_StartSound("*land", 4, 0, 1, 1, 0.5);
+			if(Oldvel.z < -1) A_StartSound("*land", 4, 0, 1, 1, 0.5);
 		}
 	}
 	
@@ -355,26 +355,30 @@ Class Cuete : DoomPlayer
 		Double Addjump;
 		float maxjump = 9;
 		// Check if the player pressed or released the jump button
-		if ( player.cmd.buttons & BT_JUMP && player.onground )
+		if ( player.cmd.buttons & BT_JUMP )
 		{
-			
-			double jumpvelz = JumpZ;
-			if (player.crouchfactor < 0.8) {jumpvelz *= 0.9;}
-			
-			Addjump = Clamp( maxjump - vel.z, 0, jumpvelz);
-			
-			OldGround = false;
-			bOnMobj = false;
-			FloorNormal = (0,0,1);
-			if (!(player.cheats & CF_PREDICTING)) 
+			if(player.onground)
 			{
-				A_StartSound("Cjump", 2);
-				A_StartSound("ZipJump", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.02,0,0.8) );
-				//if (InStateSequence(CurState, SeeState) || InStateSequence(CurState, SpawnState) )
-				SetStateLabel("Jump");
+				double jumpvelz = JumpZ;
+				if (player.crouchfactor < 0.8) {jumpvelz *= 0.9;}
+				
+				Addjump = Clamp( maxjump - vel.z, 0, jumpvelz);
+				
+				OldGround = false;
+				bOnMobj = false;
+				FloorNormal = (0,0,1);
+				if (!(player.cheats & CF_PREDICTING)) 
+				{
+					A_StartSound("Cjump", 2);
+					A_StartSound("ZipJump", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.02,0,0.8) );
+					//if (InStateSequence(CurState, SeeState) || InStateSequence(CurState, SpawnState) )
+					SetStateLabel("Jump");
+				}
+				
+				Vel.Z += Addjump;
 			}
 			
-			Vel.Z += Addjump;
+			If(waterlevel>0 && waterlevel<3 && VelengXY > 10 && VelengXY > Vel.z*2) Vel.z = GetGravity()*2 + Abs(Vel.z*0.5);
 		}
 		
 		double rampup = Pos.Z-OldPosZ;
@@ -968,7 +972,6 @@ Class MoveTech : Weapon
 				If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE ) //if it hit an actor and its shootable
 				{
 					Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
-					Puff.A_StartSound("Whuap",4,0,1,0.2);
 					invoker.reactiontime = 0;
 					invoker.Bule.HitActor.DaggerAlert(self);
 					
@@ -976,6 +979,7 @@ Class MoveTech : Weapon
 					if(invoker.boost) {
 						kDamg = Max(200, 30*Vel.Length() );
 					}
+					Puff.A_StartSound("Whuap",4,0,1,0.2, Max(0.2, 1.2 - kDamg*0.001) );
 					
 					if( invoker.Bule.HitActor.Mass < 10000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
 					{
@@ -1006,6 +1010,9 @@ Class MoveTech : Weapon
 						}
 					}
 					A_StartSound("SnareDrum",8, 0, 1, 1, Clamp(0.8+(-VelDot*0.04), 0.5, 5) );
+					
+					If(invoker.Bule.HitActor && invoker.Bule.HitActor.health < 1)
+						invoker.Bule.HitActor.Vel += Vel;
 				}
 			}
 			If(!invoker.reactiontime) 
