@@ -1,0 +1,17 @@
+AddOptionMenu OptionsMenu
+{
+  SubMenu "Cuete Options", SebDamOps
+}
+
+OptionMenu SebDamOps
+{
+  Title      "Cuete options"
+
+  Option     "Auto air strafe" , AutoAirStrafe, OnOff
+  StaticText "Automatically strafe into the movement direction."          , 1
+  StaticText ""          , 1
+  
+  Option     "Railgun spawns trail" , RailTrail, OnOff
+  
+  Option     "Boost distance crosshair" , BoostCrosshair, OnOff
+}

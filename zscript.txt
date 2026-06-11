@@ -154,10 +154,10 @@ Class Cuete : DoomPlayer
 			FloorNormal = (0,0,1);
 		}
 	}
-	
-	override void MovePlayer ()
+
+	Override void CheckCrouch(bool totallyfrozen)
 	{
-		// Player Props and Player Command references 
+		//Moved to CheckJump, happens before movement and while dead
 		let player = self.player;
 		UserCmd cmd = player.cmd;
 
@@ -172,17 +172,35 @@ Class Cuete : DoomPlayer
 		OldGround = Player.OnGround; //used so friction isnt applied in the first tick when landing
 		player.onground = (pos.z <= floorz) || bOnMobj || bMBFBouncer || (player.cheats & CF_NOCLIP2);
 		//Bool inair = !player.onground && !waterlevel;
-		
-		//base maximum move velocity
-		MaxSpeed = 5;
-		
 		//Values for checkin
 		OldVeleng = Veleng;
 		Veleng = vel.length();
 		VelengXY = vel.xy.length();
 		VelAngle = VectorAngle(Vel.X,Vel.Y);
 		AirStrafe = VelengXY > MaxSpeed+2 || !(player.onground && OldGround);//Theshold for air strafe velocity, staying below it will apply friction
-			
+		
+		if (player.playerstate == PST_LIVE && player.cmd.buttons & BT_USE && !(player.oldbuttons & BT_USE) ) 
+			A_StartSound("CTaunt",2);
+		
+		if (player.onground && !oldground)
+		{
+			if (OldVel.Z < -self.player.mo.GruntSpeed)
+			{
+				A_StartSound("*grunt", CHAN_VOICE, CHANF_NORUMBLE);
+			}
+			else if(vel.z<=0) A_StartSound("*land", 4, 0, 1, 1, 0.5);
+		}
+	}
+	
+	override void MovePlayer ()
+	{
+		// Player Props and Player Command references 
+		let player = self.player;
+		UserCmd cmd = player.cmd;
+		
+		//base maximum move velocity
+		MaxSpeed = 5;
+		
 		if (cmd.forwardmove | cmd.sidemove)
 		{
 			double MM; // acceletation/vel to add
@@ -282,11 +300,6 @@ Class Cuete : DoomPlayer
 		}
 		else A_StopSound(16);
 	}
-
-	Override void CheckCrouch(bool totallyfrozen)
-	{
-		//Moved to CheckJump
-	}
 	
 	Override void CrouchMove(int direction) //idk :P
 	{
@@ -299,7 +312,7 @@ Class Cuete : DoomPlayer
 		UserCmd cmd = player.cmd;
 		double oldheight = height;
 		Double oldfactor = player.crouchfactor;
-		Double CrouchHeight = 0.3;
+		Double CrouchHeight = 0.5;
 		
 		if (player.playerstate != PST_DEAD)//CanCrouch()
 		{
@@ -366,8 +379,9 @@ Class Cuete : DoomPlayer
 		
 		double rampup = Pos.Z-OldPosZ;
 		//This will add velocity while sliding up ramps or stairs, might make it work better
-		If(OldGround && rampup > 0 && VelengXY > 5) {//OldGround && !player.onground
+		If( (OldGround || player.onground) && rampup > 0 && VelengXY > 5) {//OldGround && !player.onground
 			Vel.Z = Max(Vel.z, rampup );
+			Vel = Vel.unit()*Veleng;
 		}
 		OldPosZ = Pos.Z;
 	}
@@ -424,8 +438,8 @@ Class Cuete : DoomPlayer
 	override bool CanCollideWith(Actor other, bool passive)
 	{
 		Double Veleng = vel.length();
-		If(!Other || Other.health <= 0 || Other.bCORPSE){Return False;}
-		else if ( Veleng > 10 && Other.bSHOOTABLE )//
+		If(!Other || (Other.health <= 0 && Other.bISMONSTER) || Other.bCORPSE){Return False;}
+		else if ( Veleng > 10 && Other.bSHOOTABLE && (!Other.bNODAMAGE && !Other.bINVULNERABLE) )//
 		{
 			if( RipperHit(Other) )
 			{
@@ -436,7 +450,7 @@ Class Cuete : DoomPlayer
 				
 				If(Aliv && Other.Mass < 10000 && !Other.bDONTTHRUST) 
 				{
-					Other.Vel = OtherDir.Unit() * (0.3 -other.mass*0.0004 ) * Damg;
+					Other.Vel = OtherDir.Unit() * Clamp( (0.3 -other.mass*0.0004 ) * Damg, 0.1, 600);
 					If(Other.health <= 0) {}
 				}
 				Actor Puff = Spawn("RayPuff", Scenter + OtherDir*0.6 );
@@ -464,7 +478,8 @@ Class Cuete : DoomPlayer
 	
 	override bool CanReceive(Inventory item)
 	{
-		if(item.getClassName() == "Z_NashMove") return false; //attempt to not get movement items if a game has one
+		//attempt to not get movement items if a game forces one with an eventhandler
+		if(item.getClassName() == "Z_NashMove") return false; 
 		return true;
 	}
 	
@@ -508,18 +523,6 @@ Class Cuete : DoomPlayer
 		WepBob += WepVel;
 		
 		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
-		
-		if (player.playerstate == PST_LIVE && player.cmd.buttons & BT_USE && !(player.oldbuttons & BT_USE) ) 
-			A_StartSound("CTaunt",2);
-		
-		if (player.onground && !oldground)
-		{
-			if (OldVel.Z < -self.player.mo.GruntSpeed)
-			{
-				A_StartSound("*grunt", CHAN_VOICE, CHANF_NORUMBLE);
-			}
-			else if(vel.z<=0) A_StartSound("*land", 4, 0, 1, 1, 0.5);
-		}
 	}
 	
 	Override void CalcHeight() ///Just added vel.z to viewZ
@@ -952,6 +955,7 @@ Class MoveTech : Weapon
 			Actor Puff;
 			Vector3 Recoil = invoker.LookDir*-1;
 			Bool hitenemy;
+			Double VelDot;
 			
 			invoker.Flash.Vel = Vel;
 			invoker.Flash.SetOrigin(Invoker.MuzPos,1);
@@ -959,6 +963,7 @@ Class MoveTech : Weapon
 				
 			if(invoker.hit)
 			{
+				VelDot = invoker.LookDir dot Vel;
 				//A_quakeEx(5,0,0,5,0,50,"",QF_RELATIVE|QF_SCALEDOWN,0,0,0,0,0,3);
 				If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE ) //if it hit an actor and its shootable
 				{
@@ -972,10 +977,10 @@ Class MoveTech : Weapon
 						kDamg = Max(200, 30*Vel.Length() );
 					}
 					
-					if( invoker.Bule.HitActor.Mass < 10000000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+					if( invoker.Bule.HitActor.Mass < 10000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
 					{
 						Double Push = kDamg * 0.4;
-						if(invoker.Bule.HitActor.bISMONSTER) Push = (0.44 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg; //if its a monster make the push depend on mass
+						if(invoker.Bule.HitActor.bISMONSTER) Push = Clamp( (0.3 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
 						Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
 						if(invoker.Bule.HitActor.Pos.Z <= invoker.Bule.HitActor.Floorz || invoker.Bule.HitActor.bOnMobj) KickVel.z = Max( KickVel.z, Push*0.2 ); //up boost if enemy is on floor
 						invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
@@ -988,24 +993,24 @@ Class MoveTech : Weapon
 				{
 					invoker.reactiontime = 0;
 					Recoil = invoker.LookDir*-9;
-					//If(hitenemy) Recoil *= -1;
+					If(hitenemy && VelDot > 8) {Recoil *= -0.2; VelDot *= -1;}
 					
 					If (invoker.Bule.HitLine) //if it hit a line
 					{
 						Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
 						Bool Opened = BreakOpenDoor(Self, invoker.Bule.HitLine, invoker.Bule.HitDir);
 						If(Opened) {
-							Recoil = invoker.LookDir*4;
+							Recoil *= -0.2; VelDot *= -1;
 							Puff.A_SprayDecal("Scorch", 30, (0,0,1), invoker.Bule.HitDir );
 							A_StartSound("BoulderDrop",7);
 						}
 					}
-					A_StartSound("SnareDrum",8, 0, 1, 1, Clamp(0.8+(-invoker.LookDir dot vel*0.04), 0.5, 5) );
+					A_StartSound("SnareDrum",8, 0, 1, 1, Clamp(0.8+(-VelDot*0.04), 0.5, 5) );
 				}
 			}
 			If(!invoker.reactiontime) 
 			{
-				Vel += Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 1.5 );
+				Vel += Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 2 );
 				
 				invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
@@ -1018,7 +1023,7 @@ Class MoveTech : Weapon
 					
 				Invoker.RayPos = Invoker.MuzPos;
 				Invoker.RayScale = Ray.Scale.x;
-				A_Overlay(2,"RayTrail");
+				if(CVar.GetCVar( "RailTrail", player ).GetBool()) A_Overlay(2,"RayTrail");
 				A_StartSound("RayShoot",1);
 				if(!puff) Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
 				If(!invoker.Bule.HitActor) Puff.A_StartSound("ricochet",2);
@@ -1066,10 +1071,9 @@ Class MoveTech : Weapon
 					{
 						invoker.Bule.HitActor.DaggerAlert(self);
 						
-						if( invoker.Bule.HitActor.Mass < 10000000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+						if( invoker.Bule.HitActor.Mass < 10000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
 						{
-							Double Push = kDamg * 0.2;
-							if(invoker.Bule.HitActor.bISMONSTER) Push = (0.44 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg; //if its a monster make the push depend on mass
+							Double Push = Clamp( (0.3 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
 							Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
 							invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
 						}
@@ -1404,7 +1408,7 @@ class CueteHud : BaseStatusBar
 			DrawKeys(CPlayer, screenSizeX*0.5 + wOfs.x, screenSizeY*0.78 + wOfs.y + 100*wOfs.z, 2*wOfs.z);
 			
 			
-			If(CPlayer.readyweapon is "MoveTech" )
+			If(CVar.GetCVar( "BoostCrosshair", Cplayer ).GetBool()  && CPlayer.readyweapon is "MoveTech")
 			{
 				double bscl = orscl + (crscl-orscl)*TicFrac;
 				String crs = MoveTech(CPlayer.readyweapon).boost ? "LZBMB0" : "LZBMA0";

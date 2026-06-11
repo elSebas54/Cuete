@@ -38,7 +38,7 @@ Cpain5 Cpain5
 Cpain6 Cpain6
 Cpain7 Cpain7
 
-$random CTaunt { CTaunt0 CTaunt1 CTaunt2 CTaunt3 CTaunt4 CTaunt5 CTaunt6 CTaunt7 Cpain6 }
+$random CTaunt { CTaunt0 CTaunt1 CTaunt2 CTaunt3 CTaunt4 CTaunt5 CTaunt6 CTaunt7 CTaunt8 Cpain6 }
 CTaunt0 CTaunt0
 CTaunt1 CTaunt1
 CTaunt2 CTaunt2
@@ -47,6 +47,7 @@ CTaunt4 CTaunt4
 CTaunt5 CTaunt5
 CTaunt6 CTaunt6
 CTaunt7 CTaunt7
+CTaunt8 CTaunt8
 
 $playersound Bronca neutral *usefail Dwinko
 $playersound Bronca neutral *death Cdeath0
