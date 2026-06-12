@@ -1,4 +1,4 @@
-version "4.10.0"
+version "4.12.0"
 
 Class Cuete : DoomPlayer
 {
@@ -381,7 +381,15 @@ Class Cuete : DoomPlayer
 			If(waterlevel>0 && waterlevel<3 && VelengXY > 10 && VelengXY > Abs(Vel.z*2) ) 
 			{
 				Vel.z = GetGravity()*4 + Abs(Vel.z*0.5);
-				A_StartSound("WaterSkip", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.01,0,0.4) );
+				A_StartSound("WaterSkip", CHAN_BODY, 0, 1, 1, 0.75 + Clamp(Veleng*0.01,0,0.4) );
+				For(int i=0; i<30; i++)
+				{
+					Vector3 Slpas = MoveTech.Vec3FromAngle( Random(4,6)+Veleng*0.2, Random(-5,5) + i*12, Random(-20,0));
+					VisualThinker spk = VisualThinker.Spawn("NeoSparky", TexMan.CheckForTexture("Sprites/RLBSA0.png"), pos,
+					Vel*1.2 + Slpas, 1, 
+					SPF_FULLBRIGHT|SPF_ROLL, Random(0,359), (8,8), (0,0), STYLE_ADD );
+					NeoSparky(spk).gravity = -0.8*GetGravity();
+				}
 			}
 		}
 		
@@ -516,7 +524,7 @@ Class Cuete : DoomPlayer
 		Actor.Tick();
 		RipperTick();
 		
-		/*vector2 ADir = (cos(pitch), sin(Pitch)*level.pixelstretch);
+		vector2 ADir = (cos(pitch), sin(Pitch)*level.pixelstretch);
 		double Apitch = asin(Adir.y / ADir.Length() );
 		Vector3 Dir = (cos(angle)*cos(Apitch), sin(angle)*cos(Apitch), sin(-Apitch));
 		Vector3 YDir = (cos(angle)*cos(Apitch-90), sin(angle)*cos(Apitch-90), sin(-Apitch+90));
@@ -530,7 +538,9 @@ Class Cuete : DoomPlayer
 		WepBob.z = Clamp(WepBob.z, -20,20);
 		WepBob += WepVel;
 		
-		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );*/
+		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
+		
+		//If(AirStrafe && level.time % 2 == 0) Movetech.SpawnBlur(self, Pos-Vel, "47cf5d");
 	}
 	
 	Override void CalcHeight() ///Just added vel.z to viewZ
@@ -890,6 +900,34 @@ Class MoveTech : Weapon
 		Return (cos(angle)*cos(pitch), sin(angle)*cos(pitch), sin(-Pitch))*Length;
 	}
 	
+	static Actor SpawnBlur( Actor obj, Vector3 Pos, color col = 0x777777 )
+	{
+		Actor blur = Spawn("MoveBlur", Pos);
+		blur.A_ChangeModel(obj.GetClassName());
+		blur.bDECOUPLEDANIMATIONS = obj.bDECOUPLEDANIMATIONS;
+		if(obj.bDECOUPLEDANIMATIONS) {
+			blur.SetModelFlag(0, IQM_GET_BONE_INFO);
+			//CopyAlLBones(blur,obj);
+		}
+		blur.angle = obj.angle; blur.pitch = obj.pitch; blur.roll = obj.roll;
+		blur.SpriteOffset = obj.SpriteOffset;
+		blur.WorldOffset = obj.WorldOffset;
+		blur.spriteAngle = obj.spriteAngle;
+		blur.spriteRotation = obj.spriteRotation;
+		blur.VisibleStartAngle = obj.VisibleStartAngle;
+		blur.VisibleStartPitch = obj.VisibleStartPitch;
+		blur.VisibleEndAngle = obj.VisibleEndAngle;
+		blur.VisibleEndPitch = obj.VisibleEndPitch;
+		blur.bROLLSPRITE = obj.bROLLSPRITE; blur.bROLLCENTER = obj.bROLLCENTER;
+		blur.bXFLIP = obj.bXFLIP; blur.bYFLIP = obj.bYFLIP;
+		blur.bINVISIBLEINMIRRORS = obj.bINVISIBLEINMIRRORS;
+		blur.bONLYVISIBLEINMIRRORS = obj.bONLYVISIBLEINMIRRORS;
+		blur.sprite = obj.sprite; blur.frame = obj.frame; blur.SpriteOffset = obj.SpriteOffset;
+		blur.scale = obj.scale; blur.alpha = obj.alpha;
+		blur.SetShade(col);
+		Return blur;
+	}
+	
 	Default
 	{
 		Weapon.SelectionOrder 100;
@@ -1238,19 +1276,16 @@ Class TechAmmo : Ammo
 Class MoveBlur : actor
 {
 	Default{
-		RenderStyle "Translucent";
+		RenderStyle "None";
+		StencilColor "777777";
 		+NOINTERACTION
 	}
 	States{
     Spawn:
 		"####" # 0;
-		"####" # 1 {
-			If(GetRenderStyle() == STYLE_Normal) {A_SetRenderStyle(Alpha,STYLE_Translucent);}
-			else If(GetRenderStyle() == STYLE_Stencil) {A_SetRenderStyle(Alpha,STYLE_TranslucentStencil);}
-			Alpha *= 0.001;
-		}
-		"####" # 0 {Alpha *= 700;}
-		"####" #### 1 {Alpha *= 0.6;}
+		"####" # 1;
+		"####" # 1 A_SetRenderStyle(alpha,STYLE_AddShaded);
+		"####" ##### 1 {Alpha -= 0.2;}
 	Stop;
 	}
 }
@@ -1272,7 +1307,7 @@ Class RayPuff : Actor
 	{
 	Spawn:
 		FPUF A 0 BRIGHT NODELAY A_SetRoll(random(0,359));
-		FPUF AAAAAA 0 BRIGHT A_SpawnParticle("47cf5d",SPF_FULLBRIGHT,8,10,0,0,0,0,random(-5,5)*Scale.x,random(-5,5)*Scale.x,random(-5,5)*Scale.y,0,0,0,1,0,-0.6);
+		FPUF AAAAAA 0 BRIGHT A_SpawnParticle("47cf5d",SPF_FULLBRIGHT,8,10,0,0,0,0,random(-6,6)*Scale.x,random(-6,6)*Scale.x,random(-6,6)*Scale.y,0,0,0,1,0,-0.6);
 		FPUF A 1 BRIGHT;
 		FPUF ABB 1 BRIGHT {Scale *= 1.4;}
 		FPUF CDEF 2 BRIGHT;
