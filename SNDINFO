@@ -15,6 +15,8 @@ SnareDrum "Sounds/snare_drum.ogg"
 PAP pap
 WoolShear "Sounds/woolshear.ogg"
 ballroll ballroll
+Waterdunk "Sounds/WaterDunk.ogg"
+WaterSkip "Sounds/WaterSkip.ogg"
 
 $random Cjump { Cjump0 Cjump1 Cjump2 Cjump3 }
 Cjump0 Cjump0
@@ -38,7 +40,7 @@ Cpain5 Cpain5
 Cpain6 Cpain6
 Cpain7 Cpain7
 
-$random CTaunt { CTaunt0 CTaunt1 CTaunt2 CTaunt3 CTaunt4 CTaunt5 CTaunt6 CTaunt7 Cpain6 }
+$random CTaunt { CTaunt0 CTaunt1 CTaunt2 CTaunt3 CTaunt4 CTaunt5 CTaunt6 CTaunt7 CTaunt8 Cpain6 }
 CTaunt0 CTaunt0
 CTaunt1 CTaunt1
 CTaunt2 CTaunt2

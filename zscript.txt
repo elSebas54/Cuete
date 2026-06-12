@@ -41,7 +41,7 @@ Class Cuete : DoomPlayer
 	{
 		See:
 			PLAY BCDE 4 {
-				A_SetTics( Clamp(20/VelengXY,2,6) );
+				A_SetTics( 20/Clamp(VelengXY,6,20) );
 			}
 			Loop;
 		Jump:
@@ -378,7 +378,11 @@ Class Cuete : DoomPlayer
 				Vel.Z += Addjump;
 			}
 			
-			If(waterlevel>0 && waterlevel<3 && VelengXY > 10 && VelengXY > Vel.z*2) Vel.z = GetGravity()*2 + Abs(Vel.z*0.5);
+			If(waterlevel>0 && waterlevel<3 && VelengXY > 10 && VelengXY > Abs(Vel.z*2) ) 
+			{
+				Vel.z = GetGravity()*4 + Abs(Vel.z*0.5);
+				A_StartSound("WaterSkip", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.01,0,0.4) );
+			}
 		}
 		
 		double rampup = Pos.Z-OldPosZ;
@@ -512,7 +516,7 @@ Class Cuete : DoomPlayer
 		Actor.Tick();
 		RipperTick();
 		
-		vector2 ADir = (cos(pitch), sin(Pitch)*level.pixelstretch);
+		/*vector2 ADir = (cos(pitch), sin(Pitch)*level.pixelstretch);
 		double Apitch = asin(Adir.y / ADir.Length() );
 		Vector3 Dir = (cos(angle)*cos(Apitch), sin(angle)*cos(Apitch), sin(-Apitch));
 		Vector3 YDir = (cos(angle)*cos(Apitch-90), sin(angle)*cos(Apitch-90), sin(-Apitch+90));
@@ -526,7 +530,7 @@ Class Cuete : DoomPlayer
 		WepBob.z = Clamp(WepBob.z, -20,20);
 		WepBob += WepVel;
 		
-		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
+		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );*/
 	}
 	
 	Override void CalcHeight() ///Just added vel.z to viewZ
