@@ -2,4 +2,5 @@ gameinfo
 {
 	playerclasses="Cuete"
 	StatusBarClass = "CueteHud"
+	AddEventHandlers = "MissileOnBlock"
 }

@@ -18,6 +18,7 @@ Class Cuete : DoomPlayer
 		Player.ViewHeight 19;
 		Player.GruntSpeed 10;
 		Player.CrouchSprite "";
+		Player.TeleportFreezeTime -1;
 		
 		MaxStepHeight 10;
 		Mass 20;
@@ -83,10 +84,8 @@ Class Cuete : DoomPlayer
 	override void BeginPlay()
     {
         super.BeginPlay();
-		Actor ring = Spawn("BodyCollider",Pos);
-		ring.target = self;
-		ring = Spawn("BodyFrame",Pos);
-		ring.target = self;
+		Actor ring = Spawn("BodyFrame",Pos); ring.target = self;
+		ring = Spawn("BodyCollider",Pos); ring.target = self;
 	}
   
 	Vector3 OldVel;
@@ -186,7 +185,7 @@ Class Cuete : DoomPlayer
 		{
 			if (OldVel.Z < -self.player.mo.GruntSpeed)
 			{
-				A_StartSound("*grunt", CHAN_VOICE, CHANF_NORUMBLE);
+				A_StartSound("*grunt", CHAN_VOICE);
 			}
 			if(Oldvel.z < -1) A_StartSound("*land", 4, 0, 1, 1, 0.5);
 		}
@@ -594,7 +593,7 @@ Class Cuete : DoomPlayer
 		{
 			if (player.health > 0)
 			{
-				angle = player.BobTimer / (120 * TICRATE / 35.) * 360.;
+				angle = Level.maptime / (120 * TICRATE / 35.) * 360.;
 				bob = player.GetStillBob() * sin(angle);
 			}
 			else
@@ -604,7 +603,7 @@ Class Cuete : DoomPlayer
 		}
 		else
 		{
-			angle = player.BobTimer / (ViewBobSpeed * TICRATE / 35.) * 360.;
+			angle = Level.maptime / (ViewBobSpeed * TICRATE / 35.) * 360.;
 			bob = player.bob * sin(angle) * (waterlevel > 1 ? 0.25f : 0.5f);
 		}
 
@@ -757,6 +756,13 @@ Class Cuete : DoomPlayer
 	{
 		return;
 	}
+	
+	Override void PostTeleport(Vector3 destpos, double destangle, int flags)
+	{
+		Vector3 PreVel = Vel;
+		Super.PostTeleport(destpos, destangle, flags);
+		Vel = OldVel;
+	}
 }
 
 mixin class NeoRipper //arrays and functions to make a ripper projectile hit an enemy only on the first tick of collision
@@ -884,9 +890,9 @@ Class BodyFrame : actor
 
 Class MoveTech : Weapon 
 {
+	CueteLineTracer Ray;
 	Actor Flash;
 	Vector3 LookDir;
-	FLineTraceData Bule;
 	Double Zofs;
 	Bool hit, boost;
 	
@@ -905,10 +911,7 @@ Class MoveTech : Weapon
 		Actor blur = Spawn("MoveBlur", Pos);
 		blur.A_ChangeModel(obj.GetClassName());
 		blur.bDECOUPLEDANIMATIONS = obj.bDECOUPLEDANIMATIONS;
-		if(obj.bDECOUPLEDANIMATIONS) {
-			blur.SetModelFlag(0, IQM_GET_BONE_INFO);
-			//CopyAlLBones(blur,obj);
-		}
+		//for when we get iqm bone offsets // if(obj.bDECOUPLEDANIMATIONS) {blur.SetModelFlag(0, IQM_GET_BONE_INFO);//CopyAlLBones(blur,obj);}
 		blur.angle = obj.angle; blur.pitch = obj.pitch; blur.roll = obj.roll;
 		blur.SpriteOffset = obj.SpriteOffset;
 		blur.WorldOffset = obj.WorldOffset;
@@ -928,6 +931,24 @@ Class MoveTech : Weapon
 		Return blur;
 	}
 	
+	override void DoEffect()
+	{
+		If(Owner && owner.player.ReadyWeapon)
+		{
+			If(!Ray) Ray = CueteLineTracer(New("CueteLineTracer")); Ray.Master = Owner;
+			
+			Psprite psp = owner.player.FindPSprite(-5);
+			//A_Log(psp.caller.GetClassName() );
+			If( !Psp ) 
+			{
+				psp = owner.player.GetPSprite(-5);
+				psp.caller = self;
+				psp.SetState(FindState("Functions"));
+			}
+		}
+		Super.DoEffect();
+	}
+	
 	Default
 	{
 		Weapon.SelectionOrder 100;
@@ -936,36 +957,36 @@ Class MoveTech : Weapon
 	}
 	States {
 		Spawn:
-		TNT1 A -1;
+		RLBS A 1 -1;
 		Stop;
 		
 		Select:
-		TNT1 A 0 A_Overlay(-5,"Functions");
-		TNT1 A 0 A_Raise(1000);
+		RLBS A 1 A_Raise(20);
 		Loop;
 		
 		Functions:
 		TNT1 A 1 {
-			If(player.cmd.buttons & BT_RELOAD){Angle += 180; Pitch *= -1;}
 		
 			invoker.LookDir = MoveTech.Vec3FromAngle(1, Angle, Pitch);
+			If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
 			invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
-			invoker.hit = LineTrace(Angle, 4000, Pitch, 0, invoker.Zofs, 0, 0, invoker.Bule);
+			invoker.Ray.Reset();
+			invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 4000, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
 			
-			invoker.boost = invoker.bule.distance <= 80 + Max(0,Vel dot invoker.LookDir);
+			//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
+			invoker.boost = invoker.Ray.Results.distance <= 80 + Max(0,Vel dot invoker.LookDir);
 			
 			invoker.MuzPos = invoker.LookDir*14 + MoveTech.Vec3FromAngle(6, Angle, Pitch+90) + Cuete(self).WepBob*0.4;
 			invoker.MuzPos.z /= level.pixelstretch;
 			invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
-		
-			If(player.cmd.buttons & BT_RELOAD){Angle -= 180; Pitch *= -1;}
+			
 			
 			If(Countinv("TechAmmo")<23 ) GiveAmmo("TechAmmo",1);
 		}
 		Loop;
 		
 		Deselect:
-		TNT1 A 0 A_Lower(1000);
+		RLBS A 1 A_Lower(20);
 		Loop;
 		
 		Ready:
@@ -998,6 +1019,7 @@ Class MoveTech : Weapon
 		RayShoot:
 		RLBS A 1 {
 			invoker.reactiontime--;
+			let Results = invoker.Ray.Results;
 			Actor Puff;
 			Vector3 Recoil = invoker.LookDir*-1;
 			Bool hitenemy;
@@ -1010,29 +1032,45 @@ Class MoveTech : Weapon
 			if(invoker.hit)
 			{
 				VelDot = invoker.LookDir dot Vel;
-				//A_quakeEx(5,0,0,5,0,50,"",QF_RELATIVE|QF_SCALEDOWN,0,0,0,0,0,3);
-				If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE ) //if it hit an actor and its shootable
+				If(Results.HitActor)
 				{
-					Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
-					invoker.reactiontime = 0;
-					invoker.Bule.HitActor.DaggerAlert(self);
-					
 					Int kDamg = 200;
-					if(invoker.boost) {
-						kDamg = Max(200, 30*Vel.Length() );
-					}
-					Puff.A_StartSound("Whuap",4,0,1,0.2, Max(0.2, 1.2 - kDamg*0.001) );
+					if(invoker.boost) kDamg = Max(200, 30*Vel.Length() );
+	
+					Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
+					invoker.reactiontime = 0;
 					
-					if( invoker.Bule.HitActor.Mass < 10000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+					If(Results.HitActor.bMISSILE)
 					{
-						Double Push = kDamg * 0.4;
-						if(invoker.Bule.HitActor.bISMONSTER) Push = Clamp( (0.3 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
-						Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
-						if(invoker.Bule.HitActor.Pos.Z <= invoker.Bule.HitActor.Floorz || invoker.Bule.HitActor.bOnMobj) KickVel.z = Max( KickVel.z, Push*0.2 ); //up boost if enemy is on floor
-						invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
+						Results.HitActor.SetDamage(kDamg);
+						Results.HitActor.Tracer = Results.HitActor.Target;
+						Results.HitActor.Target = Self;
+						Results.HitActor.Vel = Results.HitVector * 2 * Max(25,Speed,Results.HitActor.Vel.Length() );
+						Results.HitActor.A_FaceMovementDirection();
+						Results.HitActor.SetState(Results.HitActor.SpawnState);
+						Puff.A_StartSound("Whuap",4,0,1,0.2, 2 );
 					}
-					invoker.Bule.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
-					hitenemy = true;
+					If(Results.HitActor.bSHOOTABLE)
+					{
+						Results.HitActor.DaggerAlert(self);
+						Puff.A_StartSound("Whuap",4,0,1,0.2, Max(0.2, 1.2 - kDamg*0.001) );
+						
+						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust) //if it can be pushed
+						{
+							Double Push = kDamg * 0.4;
+							if(Results.HitActor.bISMONSTER) Push = Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 50); //if its a monster make the push depend on mass
+							Vector3 KickVel = Push * Results.HitVector; //HitDir is the direction the trace landed on
+							if(Results.HitActor.Pos.Z <= Results.HitActor.Floorz || Results.HitActor.bOnMobj) KickVel.z = Max( KickVel.z, Push*0.2 ); //up boost if enemy is on floor
+							Results.HitActor.vel += KickVel; //add velocity to hit actor
+						}
+						Results.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
+						hitenemy = true;
+						if(Results.HitActor && !Results.HitActor.bDontThrust && Results.HitActor.Health < 1)
+						{
+							Results.HitActor.Vel += Results.HitVector * Max(0, Results.HitVector dot (Vel-Results.HitActor.Vel));
+							Results.HitActor.Vel.z += Results.HitActor.GetGravity()*4;
+						}
+					}
 				}
 				
 				If(invoker.boost)
@@ -1041,20 +1079,20 @@ Class MoveTech : Weapon
 					Recoil = invoker.LookDir*-9;
 					If(hitenemy && VelDot > 8) {Recoil *= -0.2; VelDot *= -1;}
 					
-					If (invoker.Bule.HitLine) //if it hit a line
+					If (Results.HitLine) //if it hit a line
 					{
-						Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
-						Bool Opened = BreakOpenDoor(Self, invoker.Bule.HitLine, invoker.Bule.HitDir);
+						Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
+						Bool Opened = BreakOpenDoor(Self, Results.HitLine, Results.HitVector);
 						If(Opened) {
 							Recoil *= -0.2; VelDot *= -1;
-							Puff.A_SprayDecal("Scorch", 30, (0,0,1), invoker.Bule.HitDir );
+							Puff.A_SprayDecal("Scorch", 30, (0,0,1), Results.HitVector );
 							A_StartSound("BoulderDrop",7);
 						}
 					}
 					A_StartSound("SnareDrum",8, 0, 1, 1, Clamp(0.8+(-VelDot*0.04), 0.5, 5) );
 					
-					If(invoker.Bule.HitActor && invoker.Bule.HitActor.health < 1)
-						invoker.Bule.HitActor.Vel += Vel;
+					If(Results.HitActor && Results.HitActor.health < 1)
+						Results.HitActor.Vel += Vel;
 				}
 			}
 			If(!invoker.reactiontime) 
@@ -1063,20 +1101,20 @@ Class MoveTech : Weapon
 				
 				invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
-				Vector3 Dir = invoker.Bule.HitLocation - Ray.Pos;
+				Vector3 Dir = Results.HitPos - Ray.Pos;
 				Ray.Angle = VectorAngle(Dir.x,Dir.y);
 				Ray.Pitch = VectorAngle(Dir.xy.Length(),-Dir.Z)+90;
 				Ray.Scale = (3, Dir.Length());
-				if(hitenemy) Ray.Scale.x *= 2;
-				if(Invoker.Boost) Ray.Scale.x *= 3;
+				if(hitenemy || Invoker.Boost) Ray.Scale.x *= 3;
 					
 				Invoker.RayPos = Invoker.MuzPos;
 				Invoker.RayScale = Ray.Scale.x;
 				if(CVar.GetCVar( "RailTrail", player ).GetBool()) A_Overlay(2,"RayTrail");
 				A_StartSound("RayShoot",1);
-				if(!puff) Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir*3);
-				If(!invoker.Bule.HitActor) Puff.A_StartSound("ricochet",2);
+				if(!puff) Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
+				If(!Results.HitActor) Puff.A_StartSound("ricochet",2);
 				Cuete(self).WepVel += invoker.LookDir*-30;
+				invoker.Ray.ActivateLines(self);
 				
 				Return ResolveState("Ready");
 			}
@@ -1089,6 +1127,7 @@ Class MoveTech : Weapon
 		{
 			if(CountInv("TechAmmo") ) 
 			{
+				let Results = invoker.Ray.Results;
 				if(!invoker.Flash)
 				{
 					invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
@@ -1112,36 +1151,37 @@ Class MoveTech : Weapon
 					
 					Actor Puff;
 					
-					Puff = Spawn("RayPuff", invoker.Bule.HitLocation - invoker.Bule.HitDir);
+					Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector);
 					Puff.Scale = (0.2,0.2);
 					Puff.A_StartSound("ricochet",7,0,0.4,1);
 				
-					If(invoker.Bule.HitActor && invoker.Bule.HitActor.bSHOOTABLE)
+					If(Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
-						invoker.Bule.HitActor.DaggerAlert(self);
+						Results.HitActor.DaggerAlert(self);
 						
-						if( invoker.Bule.HitActor.Mass < 10000 && !invoker.Bule.HitActor.bDontThrust) //if it can be pushed
+						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust) //if it can be pushed
 						{
-							Double Push = Clamp( (0.3 -invoker.Bule.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
-							Vector3 KickVel = Push * invoker.Bule.HitDir; //HitDir is the direction the trace landed on
-							invoker.Bule.HitActor.vel += KickVel; //add velocity to hit actor
+							Double Push = Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
+							Vector3 KickVel = Push * Results.HitVector; //HitDir is the direction the trace landed on
+							Results.HitActor.vel += KickVel; //add velocity to hit actor
 						}
-						invoker.Bule.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
+						Results.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
 						hitenemy = true;
 					}
 					
 					
 					Double Recoil = 1.2;
 					
-					If (invoker.Bule.HitLine) //if it hit a line
+					If (Results.HitLine) //if it hit a line
 					{
-						Bool Opened = BreakOpenDoor(Self, invoker.Bule.HitLine, invoker.Bule.HitDir);
+						Bool Opened = BreakOpenDoor(Self, Results.HitLine, Results.HitVector);
 						If(Opened) {
 							Recoil = 6;
-							Puff.A_SprayDecal("BulletChip",30,(0,0,-1),invoker.Bule.HitDir);
+							Puff.A_SprayDecal("BulletChip",30,(0,0,-1),Results.HitVector);
 							Puff.A_StartSound("BoulderDrop",7);
 						}
 					}
+					invoker.Ray.ActivateLines(self);
 					
 					Vel += invoker.LookDir * Clamp( Recoil*20 - (Vel dot invoker.LookDir),0,Recoil);
 					A_StartSound("WoolShear",1,0,0.8,1, 0.8 + Clamp(invoker.LookDir dot vel*0.05, -Recoil, Recoil)*0.3 );
@@ -1255,6 +1295,94 @@ Class MoveTech : Weapon
 		else Door.Activate(Obj, 0, SPAC_Use); //else just try using the line
 		Return False;
 	}
+}
+
+class CueteLineTracer : LineTracer
+{
+	actor Master;
+	array<Actor> hitActors;
+	array<line> hitlines;
+	array<uint> hitsides;
+	
+	Virtual void Reset()
+	{
+		Master = null;
+		hitActors.clear();
+		hitlines.clear();
+		hitsides.clear();
+	}
+	
+	play Virtual void ActivateLines(actor who)
+	{
+		for(int l; l < hitlines.Size(); l++ )
+		{
+			hitlines[l].Activate(who, hitsides[l], SPAC_Impact);
+		}
+	}
+	
+    override ETraceStatus TraceCallback()
+    {
+		if (results.HitType == TRACE_HitActor && results.HitActor)
+        {
+			If( results.HitActor.bMISSILE && !(results.HitActor is "BodyCollider")) 
+				return TRACE_Stop;
+				
+			If( results.HitActor.bSHOOTABLE) 
+			{
+				return TRACE_Stop;
+			}
+			results.HitActor = null;
+        }
+		Return BulletChecks();
+	}
+	
+	ETraceStatus BulletChecks()
+	{
+		If (results.HitType == Trace_HitFloor || results.HitType == Trace_HitCeiling || results.HitType == TRACE_HasHitSky)
+		{	
+			Return TRACE_Stop;
+		}
+		
+		If (results.HitLine)
+		{
+			If (results.HitLine.activation & SPAC_Impact) 
+			{
+				Hitlines.push(results.HitLine);
+				hitsides.push(results.side);
+			}
+			If (BlockingLineInTheWay(results) )
+			{
+				Return TRACE_Stop;
+			}
+		}
+	
+		//Return TRACE_Stop;
+		//Return TRACE_Continue; //pass
+		Return TRACE_Skip; //Pass no results
+		//Return TRACE_Abort; //Stop, no results
+    }
+	
+	
+	Bool BlockingLineInTheWay (TraceResults results)
+	{
+		/*If (results.HitLine.Flags & Line.ML_TWOSIDED) 
+		{
+			Sector Back = results.Side == Line.front ? results.HitLine.BackSector : results.HitLine.frontSector;
+			
+			If(Back && Back.floorplane.ZAtPoint(results.HitPos.xy) >= results.HitPos.z || Back.ceilingplane.ZAtPoint(results.HitPos.xy) <= results.HitPos.z)
+			{
+				Return TRACE_Stop;
+			}
+		}*/
+		If (results.HitLine.Sidedef[results.Side == Line.front ? Line.Back : Line.front] == Null ||
+			results.Tier != TIER_Middle || results.HitLine.Flags & Line.ML_BLOCKEVERYTHING ||
+			results.HitLine.Flags & Line.ML_BLOCKPROJECTILE || results.HitLine.Flags & Line.ML_BLOCKHITSCAN )
+		{
+			Return True;
+		}
+		Return False;
+	}
+	
 }
 
 Class TechAmmo : Ammo
@@ -1434,23 +1562,30 @@ class CueteHud : BaseStatusBar
 		if (state == HUD_StatusBar || state == HUD_Fullscreen)
 		{
 			BeginHUD();
+			
+			String HealthTxt = "HP:" .. CPlayer.mo.Health;
+			
+			int Armour = CPlayer.mo.CountInv("BasicArmor");
+			If(Armour){
+				HealthTxt.AppendFormat(" DF:%i*%0.2f", Armour, BasicArmor(CPlayer.mo.FindInventory("BasicArmor")).SavePercent);
+			}
 	
-			DrawString(mHUDFont, "HP:" .. CPlayer.mo.Health, (0, -screenSizeY*0.1) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			DrawString(mHUDFont, HealthTxt, (0, -screenSizeY*0.1) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			//CPlayer.mo.GetMaxHealth(true)
 			Ammo am1, am2;
 			int am1amt, am2amt;
 			[am1, am2, am1amt, am2amt] = GetCurrentAmmo();
 			String AmmoTxt;
 			
-			if(am1) AmmoTxt.AppendFormat("%s %i", "AMO:", am1amt);
-			if(am2) AmmoTxt.AppendFormat("%s %i", "ALT:", am1amt);
+			if(am1) AmmoTxt.AppendFormat("AM:%i", am1amt);
+			if(am2) AmmoTxt.AppendFormat("A2:%i", am1amt);
 			
 			if(AmmoTxt)
 			{
 				DrawString(mHUDFont, AmmoTxt, (0, -screenSizeY*0.1 + 15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
 			}
 			
-			DrawString(mHUDFont, String.Format("%s %.2f", "VL:", Cuete(CPlayer.mo).Veleng), (0, -screenSizeY*0.1 + 30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			DrawString(mHUDFont, String.Format("VL:%.2f", Cuete(CPlayer.mo).Veleng), (0, -screenSizeY*0.1 + 30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			DrawKeys(CPlayer, screenSizeX*0.5 + wOfs.x, screenSizeY*0.78 + wOfs.y + 100*wOfs.z, 2*wOfs.z);
 			
 			
@@ -1474,14 +1609,28 @@ class CueteHud : BaseStatusBar
 		WobOld = WobOfs;
 		WobOfs = Cuete(CPlayer.mo).WepRel;
 		
-		If(CPlayer.readyweapon is "MoveTech" )
+		If(CPlayer.readyweapon && CPlayer.readyweapon is "MoveTech" )
 		{
-			orscl = crscl;
-			Double TanFov = Tan(CPlayer.Fov*0.5);
-			double bscl = ( 160/tanfov ) / Max( MoveTech(CPlayer.readyweapon).bule.distance,1);
-			bscl *= 3;
-			crscl = bscl;
+			If(MoveTech(CPlayer.readyweapon).Ray)
+			{
+				orscl = crscl;
+				Double TanFov = Tan(CPlayer.Fov*0.5);
+				double bscl = ( 160/tanfov ) / Max( MoveTech(CPlayer.readyweapon).Ray.Results.distance,1);
+				bscl *= 3;
+				crscl = bscl;
+			}
 		}
 		super.Tick();
+	}
+}
+
+class MissileOnBlock : EventHandler
+{
+	override void WorldThingSpawned (WorldEvent e)
+	{
+		if(e.thing) {
+			if (e.thing.bMISSILE && e.thing.bNOBLOCKMAP) 
+			e.thing.A_ChangeLinkFlags(false);
+		}
 	}
 }
