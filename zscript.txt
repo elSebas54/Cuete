@@ -498,7 +498,7 @@ Class Cuete : DoomPlayer
 		return true;
 	}
 	
-	Vector3 WepBob, WepRel, WepVel;
+	Vector3 WepBob, WepRel, WepRelol, WepVel;
 	
 	override void Tick()
 	{
@@ -537,6 +537,7 @@ Class Cuete : DoomPlayer
 		WepBob.z = Clamp(WepBob.z, -20,20);
 		WepBob += WepVel;
 		
+		WepRelol = WepRel;
 		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
 		
 		//If(AirStrafe && level.time % 2 == 0) Movetech.SpawnBlur(self, Pos-Vel, "47cf5d");
@@ -743,13 +744,13 @@ Class Cuete : DoomPlayer
 			if (i == 0) p1 = r; else p2 = r;
 		}
 		
-		return p1 * (1. - ticfrac) + p2 * ticfrac + WepRel.xy;
+		return p1 * (1. - ticfrac) + p2 * ticfrac  +   WepRelol.xy * (1. - ticfrac) + WepRel.xy * ticfrac;
 	}
 	
 	Override Vector3, Vector3 BobWeapon3D (double ticfrac)
 	{
 		Vector2 oldBob = BobWeapon(ticfrac);
-		return ( oldBob.x, -oldBob.y, WepRel.z)*0.5, ( 0, 0, Roll);//( oldBob.x*0.2, -oldBob.y*0.2, Roll)
+		return ( oldBob.x, -oldBob.y, WepRelol.z * (1. - ticfrac) + WepRel.z * ticfrac)*0.5, ( 0, 0, Roll);//( oldBob.x*0.2, -oldBob.y*0.2, Roll)
 	}
 	
 	Override void PlayerLandedMakeGruntSound(actor onmobj)
@@ -1021,7 +1022,7 @@ Class MoveTech : Weapon
 			invoker.reactiontime--;
 			let Results = invoker.Ray.Results;
 			Actor Puff;
-			Vector3 Recoil = invoker.LookDir*-1;
+			Double Recoil = -1;
 			Bool hitenemy;
 			Double VelDot;
 			
@@ -1076,7 +1077,7 @@ Class MoveTech : Weapon
 				If(invoker.boost)
 				{
 					invoker.reactiontime = 0;
-					Recoil = invoker.LookDir*-9;
+					Recoil = -9;
 					If(hitenemy && VelDot > 8) {Recoil *= -0.2; VelDot *= -1;}
 					
 					If (Results.HitLine) //if it hit a line
@@ -1084,7 +1085,7 @@ Class MoveTech : Weapon
 						Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
 						Bool Opened = BreakOpenDoor(Self, Results.HitLine, Results.HitVector);
 						If(Opened) {
-							Recoil *= -0.2; VelDot *= -1;
+							Recoil = 6; VelDot *= -1;
 							Puff.A_SprayDecal("Scorch", 30, (0,0,1), Results.HitVector );
 							A_StartSound("BoulderDrop",7);
 						}
@@ -1097,7 +1098,7 @@ Class MoveTech : Weapon
 			}
 			If(!invoker.reactiontime) 
 			{
-				Vel += Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 2 );
+				Vel += invoker.LookDir * Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 2 );
 				
 				invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
@@ -1143,11 +1144,11 @@ Class MoveTech : Weapon
 				A_StartSound("WoolShear",1,0,0.8,1,0.7);
 			
 				Cuete(self).WepVel += invoker.LookDir*5;
-				Bool hitenemy;
 				
 				if(invoker.Boost && invoker.hit)
 				{
-					Int kDamg = Max(16, Vel.Length() );
+					Double Veldot = Vel dot invoker.LookDir;
+					Int kDamg = Max(16, Veldot );
 					
 					Actor Puff;
 					
@@ -1157,18 +1158,16 @@ Class MoveTech : Weapon
 				
 					If(Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
+						if(Veldot>8) Return ResolveState("Fire");
+						
 						Results.HitActor.DaggerAlert(self);
 						
-						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust) //if it can be pushed
+						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust)
 						{
-							Double Push = Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 70); //if its a monster make the push depend on mass
-							Vector3 KickVel = Push * Results.HitVector; //HitDir is the direction the trace landed on
-							Results.HitActor.vel += KickVel; //add velocity to hit actor
+							Results.HitActor.vel += Push * Results.HitVector * Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 70);
 						}
-						Results.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle); //damage enemy
-						hitenemy = true;
+						Results.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle);
 					}
-					
 					
 					Double Recoil = 1.2;
 					
@@ -1183,8 +1182,8 @@ Class MoveTech : Weapon
 					}
 					invoker.Ray.ActivateLines(self);
 					
-					Vel += invoker.LookDir * Clamp( Recoil*20 - (Vel dot invoker.LookDir),0,Recoil);
-					A_StartSound("WoolShear",1,0,0.8,1, 0.8 + Clamp(invoker.LookDir dot vel*0.05, -Recoil, Recoil)*0.3 );
+					Vel += invoker.LookDir * Clamp( Recoil*20 - Veldot,0,Recoil);
+					A_StartSound("WoolShear",1,0,0.8,1, 0.8 + Clamp(Veldot*0.05, -Recoil, Recoil)*0.3 );
 				}
 				TakeInventory("TechAmmo",2);
 			}
