@@ -1033,7 +1033,8 @@ Class MoveTech : Weapon
 			if(invoker.hit)
 			{
 				VelDot = invoker.LookDir dot Vel;
-				If(Results.HitActor)
+				
+				If(results.HitType == TRACE_HitActor && Results.HitActor)
 				{
 					Int kDamg = 200;
 					if(invoker.boost) kDamg = Max(200, 30*Vel.Length() );
@@ -1080,7 +1081,7 @@ Class MoveTech : Weapon
 					Recoil = -9;
 					If(hitenemy && VelDot > 8) {Recoil *= -0.2; VelDot *= -1;}
 					
-					If (Results.HitLine) //if it hit a line
+					If (results.HitType == TRACE_HitWall && Results.HitLine) //if it hit a line
 					{
 						Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
 						Bool Opened = BreakOpenDoor(Self, Results.HitLine, Results.HitVector);
@@ -1106,7 +1107,7 @@ Class MoveTech : Weapon
 				Ray.Angle = VectorAngle(Dir.x,Dir.y);
 				Ray.Pitch = VectorAngle(Dir.xy.Length(),-Dir.Z)+90;
 				Ray.Scale = (3, Dir.Length());
-				if(hitenemy || Invoker.Boost) Ray.Scale.x *= 3;
+				if(Invoker.Boost) Ray.Scale.x *= 3;
 					
 				Invoker.RayPos = Invoker.MuzPos;
 				Invoker.RayScale = Ray.Scale.x;
@@ -1156,7 +1157,7 @@ Class MoveTech : Weapon
 					Puff.Scale = (0.2,0.2);
 					Puff.A_StartSound("ricochet",7,0,0.4,1);
 				
-					If(Results.HitActor && Results.HitActor.bSHOOTABLE)
+					If(results.HitType == TRACE_HitActor && Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
 						if(Veldot>8) Return ResolveState("Fire");
 						
@@ -1164,14 +1165,14 @@ Class MoveTech : Weapon
 						
 						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust)
 						{
-							Results.HitActor.vel += Push * Results.HitVector * Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 70);
+							Results.HitActor.vel += Results.HitVector * Clamp( (0.3 -Results.HitActor.mass*0.0004 ) * kDamg, 0.1, 70);
 						}
 						Results.HitActor.DamageMobj(Puff,Self,kDamg,"Railgun",DMG_INFLICTOR_IS_PUFF|DMG_THRUSTLESS,Angle);
 					}
 					
 					Double Recoil = 1.2;
 					
-					If (Results.HitLine) //if it hit a line
+					If (results.HitType == TRACE_HitWall && Results.HitLine) //if it hit a line
 					{
 						Bool Opened = BreakOpenDoor(Self, Results.HitLine, Results.HitVector);
 						If(Opened) {
@@ -1204,7 +1205,7 @@ Class MoveTech : Weapon
 			Ray.Scale.Y = RayDir.length()* level.pixelstretch;//0.01 + (RayDir.length() * level.pixelstretch)/ 1.2;
 			Ray.Scale.X = Invoker.RayScale;
 			Ray.Frame = 4;
-			Invoker.RayScale = Invoker.RayScale * 0.9 - 0.05;
+			Invoker.RayScale = Invoker.RayScale * 0.85 - 0.05;
 			//Ray.SetShade("ffdddf");
 			
 			if(Invoker.RayScale < 0) Return ResolveState("null");
@@ -1240,18 +1241,21 @@ Class MoveTech : Weapon
 	{
 		Int Lspec = Door.special;
 		Obj.A_Logint(lspec);
+		//Obj.A_Logint(Door.args[0]);
+		//if(Door.backsector) Obj.A_Logint(Door.backsector.GetTag(0));//
 		
-		bool RaiseDoor = (Lspec == 202 ||Lspec == 10|| Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274);
+		bool RaiseDoor = (Lspec == 202 || Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274);
 		bool LowerDoor = Lspec == 206 || Lspec == 242;
 		
 		//check if line is a door that opens moving up and check if you have its key
-		If ( (RaiseDoor || LowerDoor) && Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector)
+		If ( (RaiseDoor || LowerDoor) && Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector
+			&& (Door.args[0]==Door.backsector.GetTag(0) || Door.args[0]==0) )
 		{
 			Double DoorMove;
 			Double PointZC;
 			if(RaiseDoor)
 			{
-				DoorMove = Door.Frontsector.CeilingPlane.ZatPoint(Door.Frontsector.centerSpot) - 6; //estimation of the height the door opens at
+				DoorMove = Door.Frontsector.CeilingPlane.ZatPoint(Door.Frontsector.centerSpot); //estimation of the height the door opens at
 				//DoorMove = Max(DoorMove, Pos.z + height + 20); //making real sure you can pass through
 				PointZC = Door.backsector.CeilingPlane.ZatPoint(Door.backsector.centerSpot); //height of the door rn
 				
@@ -1261,7 +1265,7 @@ Class MoveTech : Weapon
 			{
 				DoorMove = Door.Frontsector.FloorPlane.ZatPoint(Door.Frontsector.centerSpot);
 				PointZC = Door.backsector.FloorPlane.ZatPoint(Door.backsector.centerSpot);
-				Door.backsector.MoveFloor(1000, Door.Frontsector.FloorPlane.PointToDist(Door.Frontsector.centerSpot,DoorMove) - 6 ,-1,-1,0,1);
+				Door.backsector.MoveFloor(1000, Door.Frontsector.FloorPlane.PointToDist(Door.Frontsector.centerSpot,DoorMove) ,-1,-1,0,1);
 			}
 			 
 			//spawn random smoke around the line
