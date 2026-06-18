@@ -369,7 +369,7 @@ Class Cuete : DoomPlayer
 				if (!(player.cheats & CF_PREDICTING)) 
 				{
 					A_StartSound("Cjump", 2);
-					A_StartSound("ZipJump", CHAN_BODY, 0, 1, 1, 0.7 + Clamp(Veleng*0.02,0,0.8) );
+					A_StartSound("ZipJump", CHAN_BODY, 0, 1, 1, 0.5 + Clamp(Veleng*0.01,0,0.8) );
 					//if (InStateSequence(CurState, SeeState) || InStateSequence(CurState, SpawnState) )
 					SetStateLabel("Jump");
 				}
@@ -1244,8 +1244,8 @@ Class MoveTech : Weapon
 		//Obj.A_Logint(Door.args[0]);
 		//if(Door.backsector) Obj.A_Logint(Door.backsector.GetTag(0));//
 		
-		bool RaiseDoor = (Lspec == 202 || Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274);
-		bool LowerDoor = Lspec == 206 || Lspec == 242;
+		bool RaiseDoor = (Lspec == 202 || Lspec == 11|| Lspec == 12|| Lspec == 13|| Lspec == 14 || Lspec == 105||Lspec == 106 || Lspec == 249|| Lspec == 274 || Lspec == 64 || Lspec == 65);
+		bool LowerDoor = Lspec == 62 || Lspec == 63 || Lspec == 66; //Lspec == 206 || Lspec == 242 || 
 		
 		//check if line is a door that opens moving up and check if you have its key
 		If ( (RaiseDoor || LowerDoor) && Obj.CheckKeys(GetLineLock(Door),false,false) && Door.backsector
@@ -1566,14 +1566,17 @@ class CueteHud : BaseStatusBar
 		{
 			BeginHUD();
 			
-			String HealthTxt = "HP:" .. CPlayer.mo.Health;
+			Vector2 HudPosi = (0, -screenSizeY*0.08);
+
+			DrawKeys(CPlayer, screenSizeX*0.5 + wOfs.x, screenSizeY*0.8 + wOfs.y + 110*wOfs.z, 2*wOfs.z);
 			
 			int Armour = CPlayer.mo.CountInv("BasicArmor");
 			If(Armour){
-				HealthTxt.AppendFormat(" DF:%i*%0.2f", Armour, BasicArmor(CPlayer.mo.FindInventory("BasicArmor")).SavePercent);
+				DrawString(mHUDFont, String.Format(" DF:%i*%0.2f", Armour, BasicArmor(CPlayer.mo.FindInventory("BasicArmor")).SavePercent)
+				, HudPosi + (0,-15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
 			}
 	
-			DrawString(mHUDFont, HealthTxt, (0, -screenSizeY*0.1) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			DrawString(mHUDFont, "HP:" .. CPlayer.mo.Health, HudPosi + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			//CPlayer.mo.GetMaxHealth(true)
 			Ammo am1, am2;
 			int am1amt, am2amt;
@@ -1585,11 +1588,10 @@ class CueteHud : BaseStatusBar
 			
 			if(AmmoTxt)
 			{
-				DrawString(mHUDFont, AmmoTxt, (0, -screenSizeY*0.1 + 15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
+				DrawString(mHUDFont, AmmoTxt, HudPosi + (0,15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
 			}
 			
-			DrawString(mHUDFont, String.Format("VL:%.2f", Cuete(CPlayer.mo).Veleng), (0, -screenSizeY*0.1 + 30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
-			DrawKeys(CPlayer, screenSizeX*0.5 + wOfs.x, screenSizeY*0.78 + wOfs.y + 100*wOfs.z, 2*wOfs.z);
+			DrawString(mHUDFont, String.Format("VL:%.2f", Cuete(CPlayer.mo).Veleng), HudPosi + (0,30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			
 			
 			If(CVar.GetCVar( "BoostCrosshair", Cplayer ).GetBool()  && CPlayer.readyweapon is "MoveTech")
@@ -1619,7 +1621,7 @@ class CueteHud : BaseStatusBar
 				orscl = crscl;
 				Double TanFov = Tan(CPlayer.Fov*0.5);
 				double bscl = ( 160/tanfov ) / Max( MoveTech(CPlayer.readyweapon).Ray.Results.distance,1);
-				bscl *= 3;
+				bscl *= 2;
 				crscl = bscl;
 			}
 		}
