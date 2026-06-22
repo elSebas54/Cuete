@@ -1,6 +1,6 @@
 version "4.12.0"
 
-Class Cuete : DoomPlayer
+Class Bronca : DoomPlayer
 {
 	Double BigSpeed;
 	Int HitCool;
@@ -27,7 +27,7 @@ Class Cuete : DoomPlayer
 		Player.AirCapacity -1;
 		GibHealth 50;
 
-		Player.DisplayName "Cuete";
+		Player.DisplayName "Bronca";
 		Player.SoundClass "Bronca";
 		//Player.WeaponSlot 1, "MoveTech";
 		Player.StartItem "MoveTech";
@@ -91,7 +91,7 @@ Class Cuete : DoomPlayer
 	Vector3 OldVel;
 	Vector2 VectorMove;
 	Vector3 FloorNormal;
-	Double OldPosZ;
+	Double OldPosZ, OldPosZZ;
 	Double FovVel;
 	Double WallTilt;
 	Double Veleng, OldVeleng;
@@ -392,12 +392,15 @@ Class Cuete : DoomPlayer
 			}
 		}
 		
-		double rampup = Pos.Z-OldPosZ;
 		//This will add velocity while sliding up ramps or stairs, might make it work better
-		If( (OldGround || player.onground) && rampup > 0 && VelengXY > 5) {//OldGround && !player.onground
-			Vel.Z = Max(Vel.z, rampup );
-			Vel = Vel.unit()*Veleng;
+		If(VelengXY > 5)
+		{
+			If( oldground && Pos.Z <= OldPosZ && OldPosZ > OldPosZZ)
+			{
+				Vel.Z = Max(Pos.Z - OldPosZ, OldPosZ - OldPosZZ, Vel.Z);
+			}
 		}
+		OldPosZZ = OldPosZ;
 		OldPosZ = Pos.Z;
 	}
 	
@@ -839,7 +842,7 @@ Class BodyCollider : actor //used for detecting walls
 		If(bounceLine)
 		{
 			bool opend;
-			if(Cuete(target).AirStrafe) opend = MoveTech.BreakOpenDoor(target, bounceLine, Vel.Unit() );
+			if(Bronca(target).AirStrafe) opend = MoveTech.BreakOpenDoor(target, bounceLine, Vel.Unit() );
 			If(opend) {
 				A_StartSound("Bing1",21);
 				A_StartSound("BoulderDrop",22);
@@ -977,7 +980,7 @@ Class MoveTech : Weapon
 			//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
 			invoker.boost = invoker.Ray.Results.distance <= 80 + Max(0,Vel dot invoker.LookDir);
 			
-			invoker.MuzPos = invoker.LookDir*14 + MoveTech.Vec3FromAngle(6, Angle, Pitch+90) + Cuete(self).WepBob*0.4;
+			invoker.MuzPos = invoker.LookDir*14 + MoveTech.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
 			invoker.MuzPos.z /= level.pixelstretch;
 			invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
 			
@@ -1015,7 +1018,7 @@ Class MoveTech : Weapon
 			invoker.Flash.Scale = (0.3,0.3);
 			invoker.Flash.Tics++;
 			
-			Cuete(self).WepVel += MoveTech.Vec3FromAngle(5, Angle, Pitch+90);
+			Bronca(self).WepVel += MoveTech.Vec3FromAngle(5, Angle, Pitch+90);
 		}
 		RayShoot:
 		RLBS A 1 {
@@ -1099,7 +1102,8 @@ Class MoveTech : Weapon
 			}
 			If(!invoker.reactiontime) 
 			{
-				Vel += invoker.LookDir * Recoil * Clamp( invoker.LookDir dot Vel*0.2, 1, 2 );
+				Recoil = Clamp( invoker.LookDir dot -Vel - 6, Recoil*2, Recoil );
+				Vel += invoker.LookDir * Recoil;
 				
 				invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
@@ -1115,7 +1119,7 @@ Class MoveTech : Weapon
 				A_StartSound("RayShoot",1);
 				if(!puff) Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
 				If(!Results.HitActor) Puff.A_StartSound("ricochet",2);
-				Cuete(self).WepVel += invoker.LookDir*-30;
+				Bronca(self).WepVel += invoker.LookDir*-30;
 				invoker.Ray.ActivateLines(self);
 				
 				Return ResolveState("Ready");
@@ -1144,7 +1148,7 @@ Class MoveTech : Weapon
 				invoker.Flash.Roll = Random(1,360);
 				A_StartSound("WoolShear",1,0,0.8,1,0.7);
 			
-				Cuete(self).WepVel += invoker.LookDir*5;
+				Bronca(self).WepVel += invoker.LookDir*5;
 				
 				if(invoker.Boost && invoker.hit)
 				{
@@ -1591,7 +1595,7 @@ class CueteHud : BaseStatusBar
 				DrawString(mHUDFont, AmmoTxt, HudPosi + (0,15*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z );
 			}
 			
-			DrawString(mHUDFont, String.Format("VL:%.2f", Cuete(CPlayer.mo).Veleng), HudPosi + (0,30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
+			DrawString(mHUDFont, String.Format("VL:%.2f", Bronca(CPlayer.mo).Veleng), HudPosi + (0,30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			
 			
 			If(CVar.GetCVar( "BoostCrosshair", Cplayer ).GetBool()  && CPlayer.readyweapon is "MoveTech")
@@ -1612,7 +1616,7 @@ class CueteHud : BaseStatusBar
 	override void Tick()
 	{
 		WobOld = WobOfs;
-		WobOfs = Cuete(CPlayer.mo).WepRel;
+		WobOfs = Bronca(CPlayer.mo).WepRel;
 		
 		If(CPlayer.readyweapon && CPlayer.readyweapon is "MoveTech" )
 		{
