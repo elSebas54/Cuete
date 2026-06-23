@@ -188,6 +188,9 @@ Class Bronca : DoomPlayer
 				A_StartSound("*grunt", CHAN_VOICE);
 			}
 			if(Oldvel.z < -1) A_StartSound("*land", 4, 0, 1, 1, 0.5);
+			
+			double shaky = Min( 50, OldVeleng-18 );
+			if(shaky>0) A_QuakeEx(0, 0, shaky*0.1, 8 + 0.4*shaky, 0,  20, "", QF_SCALEDOWN|QF_WAVE, 8.75, 8.75, 8.75);
 		}
 	}
 	
@@ -956,6 +959,7 @@ Class MoveTech : Weapon
 	Default
 	{
 		Weapon.SelectionOrder 100;
+		Weapon.AmmoUse 25;
 		Weapon.SlotNumber 1;
 		weapon.ammotype1 "TechAmmo";
 	}
@@ -985,7 +989,7 @@ Class MoveTech : Weapon
 			invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
 			
 			
-			If(Countinv("TechAmmo")<23 ) GiveAmmo("TechAmmo",1);
+			If(Countinv("TechAmmo")<invoker.AmmoUse1 ) GiveAmmo("TechAmmo",1);
 		}
 		Loop;
 		
@@ -995,11 +999,11 @@ Class MoveTech : Weapon
 		
 		Ready:
 		RLBS A 1 {
-			If(player.cmd.buttons & BT_ATTACK && CountInv("TechAmmo")>22 )
+			If(player.cmd.buttons & BT_ATTACK && CountInv("TechAmmo")>invoker.AmmoUse1-1 )
 			{
 				Return ResolveState("Fire");
 			}
-			If( player.cmd.buttons & BT_ALTATTACK && CountInv("TechAmmo")>22)
+			If( player.cmd.buttons & BT_ALTATTACK && CountInv("TechAmmo")>invoker.AmmoUse1-1)
 			{
 				Return ResolveState("AltFire");
 			}
