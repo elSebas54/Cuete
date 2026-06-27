@@ -3,8 +3,8 @@ Model Bronca
 	Path "Models" 
 	SurfaceSkin 0 0 "CueteBody.png" 
 	SurfaceSkin 0 1 "CueteFace.png" 
-	SurfaceSkin 0 2 "RailThingi.png" 
-	MODEL 0 "Cuete.md3"
+	SurfaceSkin 0 2 "PogoTxt.png" 
+	MODEL 0 "Bronca.md3"
 	DONTCULLBACKFACES
 	USEACTORPITCH
 	USEACTORROLL
@@ -29,12 +29,12 @@ Model Bronca
 	FrameIndex PLAY Q 0 0
 }
 
-Model MoveTech
+Model PogoGun
 { 
 	Path "Models" 
-	SurfaceSkin 0 0 "RailThingi.png" 
+	SurfaceSkin 0 0 "PogoTxt.png" 
 	SurfaceSkin 0 1 "CueteBody.png" 
-	MODEL 0 "RailThingie.md3"
+	MODEL 0 "PogoGun.md3"
 	DONTCULLBACKFACES
 	USEACTORPITCH
 	USEACTORROLL
@@ -42,6 +42,8 @@ Model MoveTech
 	Offset 0 0 -4
 	//CORRECTPIXELSTRETCH
 	FrameIndex RLBS A 0 0
+	FrameIndex RLBS B 0 1
+	FrameIndex RLBS C 0 2
 }
 
 Model RayTracer

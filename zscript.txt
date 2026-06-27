@@ -29,8 +29,8 @@ Class Bronca : DoomPlayer
 
 		Player.DisplayName "Bronca";
 		Player.SoundClass "Bronca";
-		//Player.WeaponSlot 1, "MoveTech";
-		Player.StartItem "MoveTech";
+		//Player.WeaponSlot 1, "PogoGun";
+		Player.StartItem "PogoGun";
 
 		Player.ForwardMove 1,1;
 		Player.SideMove 1.23,1.23;
@@ -386,7 +386,7 @@ Class Bronca : DoomPlayer
 				A_StartSound("WaterSkip", CHAN_BODY, 0, 1, 1, 0.75 + Clamp(Veleng*0.01,0,0.4) );
 				For(int i=0; i<30; i++)
 				{
-					Vector3 Slpas = MoveTech.Vec3FromAngle( Random(4,6)+Veleng*0.2, Random(-5,5) + i*12, Random(-20,0));
+					Vector3 Slpas = PogoGun.Vec3FromAngle( Random(4,6)+Veleng*0.2, Random(-5,5) + i*12, Random(-20,0));
 					VisualThinker spk = VisualThinker.Spawn("NeoSparky", TexMan.CheckForTexture("Sprites/RLBSA0.png"), pos,
 					Vel*1.2 + Slpas, 1, 
 					SPF_FULLBRIGHT|SPF_ROLL, Random(0,359), (8,8), (0,0), STYLE_ADD );
@@ -546,7 +546,7 @@ Class Bronca : DoomPlayer
 		WepRelol = WepRel;
 		WepRel = ( WepBob dot XDir, -WepBob dot YDir, -WepBob dot Dir );
 		
-		//If(AirStrafe && level.time % 2 == 0) Movetech.SpawnBlur(self, Pos-Vel, "47cf5d");
+		//If(AirStrafe && level.time % 2 == 0) PogoGun.SpawnBlur(self, Pos-Vel, "47cf5d");
 	}
 	
 	Override void CalcHeight() ///Just added vel.z to viewZ
@@ -845,7 +845,7 @@ Class BodyCollider : actor //used for detecting walls
 		If(bounceLine)
 		{
 			bool opend;
-			if(Bronca(target).AirStrafe) opend = MoveTech.BreakOpenDoor(target, bounceLine, Vel.Unit() );
+			if(Bronca(target).AirStrafe) opend = PogoGun.BreakOpenDoor(target, bounceLine, Vel.Unit() );
 			If(opend) {
 				A_StartSound("Bing1",21);
 				A_StartSound("BoulderDrop",22);
@@ -895,7 +895,7 @@ Class BodyFrame : actor
 	}
 }
 
-Class MoveTech : Weapon 
+Class PogoGun : Weapon 
 {
 	CueteLineTracer Ray;
 	Actor Flash;
@@ -975,7 +975,7 @@ Class MoveTech : Weapon
 		Functions:
 		TNT1 A 1 {
 		
-			invoker.LookDir = MoveTech.Vec3FromAngle(1, Angle, Pitch);
+			invoker.LookDir = PogoGun.Vec3FromAngle(1, Angle, Pitch);
 			If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
 			invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
 			invoker.Ray.Reset();
@@ -984,7 +984,7 @@ Class MoveTech : Weapon
 			//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
 			invoker.boost = invoker.Ray.Results.distance <= 80 + Max(0,Vel dot invoker.LookDir);
 			
-			invoker.MuzPos = invoker.LookDir*14 + MoveTech.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
+			invoker.MuzPos = invoker.LookDir*14 + PogoGun.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
 			invoker.MuzPos.z /= level.pixelstretch;
 			invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
 			
@@ -1022,10 +1022,10 @@ Class MoveTech : Weapon
 			invoker.Flash.Scale = (0.3,0.3);
 			invoker.Flash.Tics++;
 			
-			Bronca(self).WepVel += MoveTech.Vec3FromAngle(5, Angle, Pitch+90);
+			Bronca(self).WepVel += PogoGun.Vec3FromAngle(5, Angle, Pitch+90);
 		}
 		RayShoot:
-		RLBS A 1 {
+		RLBS C 1 {
 			invoker.reactiontime--;
 			let Results = invoker.Ray.Results;
 			Actor Puff;
@@ -1126,14 +1126,20 @@ Class MoveTech : Weapon
 				Bronca(self).WepVel += invoker.LookDir*-30;
 				invoker.Ray.ActivateLines(self);
 				
+				if(invoker.boost) Return ResolveState("Fireboost");
 				Return ResolveState("Ready");
 			}
 			Return ResolveState(Null);
 		}
 		Loop;
 		
+		Fireboost:
+		RLBS CBBB 1;
+		RLBS BA 6;
+		Goto Ready;
+		
 		AltFire:
-		RLBS A 1
+		RLBS C 1
 		{
 			if(CountInv("TechAmmo") ) 
 			{
@@ -1602,10 +1608,10 @@ class CueteHud : BaseStatusBar
 			DrawString(mHUDFont, String.Format("VL:%.2f", Bronca(CPlayer.mo).Veleng), HudPosi + (0,30*wOfs.Z) + wOfs.xy, DI_SCREEN_CENTER_BOTTOM|DI_TEXT_ALIGN_CENTER, scale: (1,1)*wOfs.z);
 			
 			
-			If(CVar.GetCVar( "BoostCrosshair", Cplayer ).GetBool()  && CPlayer.readyweapon is "MoveTech")
+			If(CVar.GetCVar( "BoostCrosshair", Cplayer ).GetBool()  && CPlayer.readyweapon is "PogoGun")
 			{
 				double bscl = orscl + (crscl-orscl)*TicFrac;
-				String crs = MoveTech(CPlayer.readyweapon).boost ? "LZBMB0" : "LZBMA0";
+				String crs = PogoGun(CPlayer.readyweapon).boost ? "LZBMB0" : "LZBMA0";
 				
 				Screen.DrawTexture(TexMan.CheckForTexture(crs) ,
 					false, screenSizeX*0.5, screenSizeY*0.5,
@@ -1622,13 +1628,13 @@ class CueteHud : BaseStatusBar
 		WobOld = WobOfs;
 		WobOfs = Bronca(CPlayer.mo).WepRel;
 		
-		If(CPlayer.readyweapon && CPlayer.readyweapon is "MoveTech" )
+		If(CPlayer.readyweapon && CPlayer.readyweapon is "PogoGun" )
 		{
-			If(MoveTech(CPlayer.readyweapon).Ray)
+			If(PogoGun(CPlayer.readyweapon).Ray)
 			{
 				orscl = crscl;
 				Double TanFov = Tan(CPlayer.Fov*0.5);
-				double bscl = ( 160/tanfov ) / Max( MoveTech(CPlayer.readyweapon).Ray.Results.distance,1);
+				double bscl = ( 160/tanfov ) / Max( PogoGun(CPlayer.readyweapon).Ray.Results.distance,1);
 				bscl *= 2;
 				crscl = bscl;
 			}
