@@ -955,13 +955,30 @@ Class PogoGun : Weapon
 		}
 		Super.DoEffect();
 	}
+
+	action void HandleTrace()
+	{
+		invoker.LookDir = PogoGun.Vec3FromAngle(1, Angle, Pitch);
+		If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
+		invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
+		invoker.Ray.Reset();
+		double veldot = Max(0,Vel dot invoker.LookDir);
+		invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 4000, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
+		
+		//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
+		invoker.boost = invoker.Ray.Results.distance <= 80 + veldot;
+		
+		invoker.MuzPos = invoker.LookDir*14 + PogoGun.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
+		invoker.MuzPos.z /= level.pixelstretch;
+		invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
+	}
 	
 	Default
 	{
 		Weapon.SelectionOrder 100;
 		Weapon.AmmoUse 25;
 		Weapon.SlotNumber 1;
-		weapon.ammotype1 "TechAmmo";
+		weapon.ammotype1 "PogoGunAmmo";
 	}
 	States {
 		Spawn:
@@ -974,22 +991,8 @@ Class PogoGun : Weapon
 		
 		Functions:
 		TNT1 A 1 {
-		
-			invoker.LookDir = PogoGun.Vec3FromAngle(1, Angle, Pitch);
-			If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
-			invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
-			invoker.Ray.Reset();
-			invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 4000, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
-			
-			//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
-			invoker.boost = invoker.Ray.Results.distance <= 80 + Max(0,Vel dot invoker.LookDir);
-			
-			invoker.MuzPos = invoker.LookDir*14 + PogoGun.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
-			invoker.MuzPos.z /= level.pixelstretch;
-			invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
-			
-			
-			If(Countinv("TechAmmo")<invoker.AmmoUse1 ) GiveAmmo("TechAmmo",1);
+			HandleTrace();
+			If(Countinv("PogoGunAmmo")<invoker.AmmoUse1 ) GiveAmmo("PogoGunAmmo",1);
 		}
 		Loop;
 		
@@ -999,11 +1002,11 @@ Class PogoGun : Weapon
 		
 		Ready:
 		RLBS A 1 {
-			If(player.cmd.buttons & BT_ATTACK && CountInv("TechAmmo")>invoker.AmmoUse1-1 )
+			If(player.cmd.buttons & BT_ATTACK && CountInv("PogoGunAmmo")>invoker.AmmoUse1-1 )
 			{
 				Return ResolveState("Fire");
 			}
-			If( player.cmd.buttons & BT_ALTATTACK && CountInv("TechAmmo")>invoker.AmmoUse1-1)
+			If( player.cmd.buttons & BT_ALTATTACK && CountInv("PogoGunAmmo")>invoker.AmmoUse1-1)
 			{
 				Return ResolveState("AltFire");
 			}
@@ -1016,7 +1019,7 @@ Class PogoGun : Weapon
 		Fire:
 		RLBS A 0 {
 			invoker.reactiontime = 5;
-			SetInventory("TechAmmo",0);
+			SetInventory("PogoGunAmmo",0);
 			invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
 			invoker.Flash.Vel = Vel;
 			invoker.Flash.Scale = (0.3,0.3);
@@ -1051,12 +1054,16 @@ Class PogoGun : Weapon
 					
 					If(Results.HitActor.bMISSILE)
 					{
-						Results.HitActor.SetDamage(kDamg);
+						//fire ray again to teleport projectile into hitPos
+						if(Results.HitActor is "BigSlug") {Results.HitActor.Stamina = 2000; Results.HitActor.bRIPPER = true;}
+						else Results.HitActor.SetDamage(kDamg);
 						Results.HitActor.Tracer = Results.HitActor.Target;
 						Results.HitActor.Target = Self;
-						Results.HitActor.Vel = Results.HitVector * 2 * Max(25,Speed,Results.HitActor.Vel.Length() );
+						Results.HitActor.Vel = Results.HitVector * 2 * Max(25, Results.HitActor.Speed, Results.HitActor.Vel.Length() );
+						if(!Results.HitActor.bNOGRAVITY) Results.HitActor.Vel.Z += Results.HitActor.GetGravity()*6;
 						Results.HitActor.A_FaceMovementDirection();
 						Results.HitActor.SetState(Results.HitActor.SpawnState);
+						Puff.Scale = (0.2,0.2);
 						Puff.A_StartSound("Whuap",4,0,1,0.2, 2 );
 					}
 					If(Results.HitActor.bSHOOTABLE)
@@ -1103,13 +1110,14 @@ Class PogoGun : Weapon
 					If(Results.HitActor && Results.HitActor.health < 1)
 						Results.HitActor.Vel += Vel;
 				}
+				
 			}
 			If(!invoker.reactiontime) 
 			{
 				Recoil = Clamp( invoker.LookDir dot -Vel - 6, Recoil*2, Recoil );
 				Vel += invoker.LookDir * Recoil;
 				
-				invoker.Flash.Vel = (0,0,0);
+				//invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
 				Vector3 Dir = Results.HitPos - Ray.Pos;
 				Ray.Angle = VectorAngle(Dir.x,Dir.y);
@@ -1126,6 +1134,17 @@ Class PogoGun : Weapon
 				Bronca(self).WepVel += invoker.LookDir*-30;
 				invoker.Ray.ActivateLines(self);
 				
+				If(!Results.HitActor || !Results.HitActor.bMISSILE) {
+					Actor slug = spawn("BigSlug", Results.HitPos - Results.HitVector*10);
+					Slug.Target = self;
+					If(invoker.hit) {
+						Slug.Vel = -Results.HitVector + (0,0,Slug.GetGravity()*18 );
+					}
+					else Slug.Vel = Results.HitVector*50;
+					Slug.Angle = Angle; Slug.Pitch = Pitch; 
+					Slug.FloatSpeed = Random(10,30);
+				}
+				
 				if(invoker.boost) Return ResolveState("Fireboost");
 				Return ResolveState("Ready");
 			}
@@ -1134,14 +1153,20 @@ Class PogoGun : Weapon
 		Loop;
 		
 		Fireboost:
-		RLBS CBBB 1;
+		RLBS CBBB 1 {
+			if(invoker.Flash)
+			{
+				invoker.Flash.Vel = Vel;
+				invoker.Flash.SetOrigin(Invoker.MuzPos,1);
+			}
+		}
 		RLBS BA 6;
 		Goto Ready;
 		
 		AltFire:
 		RLBS C 1
 		{
-			if(CountInv("TechAmmo") ) 
+			if(CountInv("PogoGunAmmo") ) 
 			{
 				let Results = invoker.Ray.Results;
 				if(!invoker.Flash)
@@ -1200,9 +1225,9 @@ Class PogoGun : Weapon
 					Vel += invoker.LookDir * Clamp( Recoil*20 - Veldot,0,Recoil);
 					A_StartSound("WoolShear",1,0,0.8,1, 0.8 + Clamp(Veldot*0.05, -Recoil, Recoil)*0.3 );
 				}
-				TakeInventory("TechAmmo",2);
+				TakeInventory("PogoGunAmmo",2);
 			}
-			if(CountInv("TechAmmo") < 1 ) Return ResolveState("Ready");
+			if(CountInv("PogoGunAmmo") < 1 ) Return ResolveState("Ready");
 			Return ResolveState(null);
 		}
 		Loop;
@@ -1402,7 +1427,7 @@ class CueteLineTracer : LineTracer
 	
 }
 
-Class TechAmmo : Ammo
+Class PogoGunAmmo : Ammo
 {
 	Default {
 		Inventory.Amount 1;
@@ -1418,6 +1443,42 @@ Class TechAmmo : Ammo
 	}
 }
 
+Class BigSlug : Actor//FastProjectile
+{
+	Default 
+	{
+		FloatSpeed 10;
+		Stamina 20;
+		DamageFunction (Stamina);
+		Speed 30;
+		Height 14;
+		Radius 7;
+		Gravity 0.4;
+		+INTERPOLATEANGLES
+		+MISSILE
+		+WINDTHRUST
+		+BRIGHT
+	}
+	States
+	{
+		Spawn:
+			SLUG A 1 {
+				//Vel.z -= GetGravity();
+				Roll += FloatSpeed;
+				if(Vel.lengthSquared()>900 ) PogoGun.SpawnBlur(Self, Pos, 0x47CF5D).vel = vel*0.3;
+			}
+			loop;
+		
+		Death:
+			SLUG A 1 {
+				Actor Puff = Spawn("RayPuff", Pos + (0,0,Height*0.5) );
+				Puff.Scale = (0.2,0.2);
+			}	
+			TNT1 A 1;
+			Stop;
+	}
+}
+
 Class MoveBlur : actor
 {
 	Default{
@@ -1430,7 +1491,7 @@ Class MoveBlur : actor
 		"####" # 0;
 		"####" # 1;
 		"####" # 1 A_SetRenderStyle(alpha,STYLE_AddShaded);
-		"####" ##### 1 {Alpha -= 0.2;}
+		"####" ########## 1 {Alpha -= 0.1;}
 	Stop;
 	}
 }

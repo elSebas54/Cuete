@@ -46,6 +46,22 @@ Model PogoGun
 	FrameIndex RLBS C 0 2
 }
 
+Model BigSlug
+{ 
+	Path "Models" 
+	SKIN 0 "BigSlug.png" 
+	MODEL 0 "BigSlug.md3"
+	DONTCULLBACKFACES
+	USEACTORPITCH
+	USEACTORROLL
+	USEROTATIONCENTER
+	PitchOffset -90
+	offset 0 0 7
+	Rotation-Center 0 0 7
+	//CORRECTPIXELSTRETCH
+	FrameIndex SLUG A 0 0
+}
+
 Model RayTracer
 { 
 	Path "Models" 
@@ -55,6 +71,7 @@ Model RayTracer
 	USEACTORPITCH
 	USEACTORROLL
 	//CORRECTPIXELSTRETCH
+	
 	FrameIndex LZBM D 0 0
 }
 Model RayTracer
