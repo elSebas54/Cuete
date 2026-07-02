@@ -962,13 +962,13 @@ Class PogoGun : Weapon
 		If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
 		invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
 		invoker.Ray.Reset();
-		double veldot = Max(0,Vel dot invoker.LookDir);
 		invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 4000, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
 		
 		//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
-		invoker.boost = invoker.Ray.Results.distance <= 80 + veldot;
+		invoker.boost = invoker.Ray.Results.distance <= 70 + Max(0,Vel dot invoker.LookDir);
 		
-		invoker.MuzPos = invoker.LookDir*14 + PogoGun.Vec3FromAngle(6, Angle, Pitch+90) + Bronca(self).WepBob*0.4;
+		invoker.MuzPos = PogoGun.Vec3FromAngle(38.7, Angle, Pitch+23) + Bronca(self).WepBob;
+		invoker.MuzPos *= 0.4;
 		invoker.MuzPos.z /= level.pixelstretch;
 		invoker.MuzPos += (pos.x,pos.y,player.viewz-vel.z);
 	}
@@ -992,7 +992,13 @@ Class PogoGun : Weapon
 		Functions:
 		TNT1 A 1 {
 			HandleTrace();
-			If(Countinv("PogoGunAmmo")<invoker.AmmoUse1 ) GiveAmmo("PogoGunAmmo",1);
+			If(Countinv("PogoGunAmmo")<invoker.AmmoUse1 ) GiveInventory("PogoGunAmmo",1);
+			
+			if(invoker.Flash)
+			{
+				invoker.Flash.Vel = Vel;
+				invoker.Flash.SetOrigin(Invoker.MuzPos,1);
+			}
 		}
 		Loop;
 		
@@ -1022,7 +1028,7 @@ Class PogoGun : Weapon
 			SetInventory("PogoGunAmmo",0);
 			invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
 			invoker.Flash.Vel = Vel;
-			invoker.Flash.Scale = (0.3,0.3);
+			invoker.Flash.Scale = (0.2,0.2);
 			invoker.Flash.Tics++;
 			
 			Bronca(self).WepVel += PogoGun.Vec3FromAngle(5, Angle, Pitch+90);
@@ -1033,8 +1039,8 @@ Class PogoGun : Weapon
 			let Results = invoker.Ray.Results;
 			Actor Puff;
 			Double Recoil = -1;
-			Bool hitenemy;
-			Double VelDot;
+			Bool hitenemy, hitproj;
+			Double VelDot = invoker.LookDir dot Vel;
 			
 			invoker.Flash.Vel = Vel;
 			invoker.Flash.SetOrigin(Invoker.MuzPos,1);
@@ -1042,7 +1048,6 @@ Class PogoGun : Weapon
 				
 			if(invoker.hit)
 			{
-				VelDot = invoker.LookDir dot Vel;
 				
 				If(results.HitType == TRACE_HitActor && Results.HitActor)
 				{
@@ -1054,22 +1059,42 @@ Class PogoGun : Weapon
 					
 					If(Results.HitActor.bMISSILE)
 					{
+						hitproj = true;
+						Actor proj = Results.HitActor;
+						bool olboost = invoker.boost;
 						//fire ray again to teleport projectile into hitPos
-						if(Results.HitActor is "BigSlug") {Results.HitActor.Stamina = 2000; Results.HitActor.bRIPPER = true;}
-						else Results.HitActor.SetDamage(kDamg);
-						Results.HitActor.Tracer = Results.HitActor.Target;
-						Results.HitActor.Target = Self;
-						Results.HitActor.Vel = Results.HitVector * 2 * Max(25, Results.HitActor.Speed, Results.HitActor.Vel.Length() );
-						if(!Results.HitActor.bNOGRAVITY) Results.HitActor.Vel.Z += Results.HitActor.GetGravity()*6;
-						Results.HitActor.A_FaceMovementDirection();
-						Results.HitActor.SetState(Results.HitActor.SpawnState);
+						proj.bMISSILE = false;
+						HandleTrace();
+						proj.bMISSILE = true;
+						invoker.boost = olboost;
+						
+						if(proj is "BigSlug") {proj.Stamina = 2000; proj.bRIPPER = true; }
+						
+						proj.Tracer = proj.Target;
+						proj.Target = Self;
+						Vector3 oldpos = proj.Pos;
+						proj.Setorigin(Results.HitPos - (0,0,proj.Height*0.5) - Results.HitVector*Max(proj.Radius, proj.Height*0.5)*1.42, true );
+						proj.Vel = Results.HitVector * 2 * Max(25, proj.Speed, proj.Vel.Length() );
+						proj.A_FaceMovementDirection();
+						
+						double spacin = 50;
+						double frac = Results.Distance/spacin;
+						For(int i; i < frac; i++)
+						{
+							actor blur = SpawnBlur(proj, oldpos + Results.HitVector*spacin*i, 0x47CF5D);
+							Blur.vel = Results.HitVector*2;
+							Blur.Alpha = 0.2 + 3*float(i)/frac;
+						}
+						
+						//proj.SetState(proj.SpawnState);
 						Puff.Scale = (0.2,0.2);
-						Puff.A_StartSound("Whuap",4,0,1,0.2, 2 );
+						Puff.A_StartSound("BatParry",4,0,1,0.2, 0.9 );
 					}
-					If(Results.HitActor.bSHOOTABLE)
+					If(Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
 						Results.HitActor.DaggerAlert(self);
 						Puff.A_StartSound("Whuap",4,0,1,0.2, Max(0.2, 1.2 - kDamg*0.001) );
+						if(kDamg>400) Puff.A_StartSound("GongHit",6,0,1,0.1, Max(0.8, 2.5 - kDamg*0.001) );
 						
 						if( Results.HitActor.Mass < 10000 && !Results.HitActor.bDontThrust) //if it can be pushed
 						{
@@ -1114,7 +1139,7 @@ Class PogoGun : Weapon
 			}
 			If(!invoker.reactiontime) 
 			{
-				Recoil = Clamp( invoker.LookDir dot -Vel - 6, Recoil*2, Recoil );
+				Recoil = Clamp( -VelDot - 6, Recoil*2, Recoil );
 				Vel += invoker.LookDir * Recoil;
 				
 				//invoker.Flash.Vel = (0,0,0);
@@ -1134,11 +1159,12 @@ Class PogoGun : Weapon
 				Bronca(self).WepVel += invoker.LookDir*-30;
 				invoker.Ray.ActivateLines(self);
 				
-				If(!Results.HitActor || !Results.HitActor.bMISSILE) {
+				If(!hitproj)
+				{
 					Actor slug = spawn("BigSlug", Results.HitPos - Results.HitVector*10);
 					Slug.Target = self;
 					If(invoker.hit) {
-						Slug.Vel = -Results.HitVector + (0,0,Slug.GetGravity()*18 );
+						Slug.Vel = -4*Results.HitVector + (0,0,Slug.GetGravity()*16 );
 					}
 					else Slug.Vel = Results.HitVector*50;
 					Slug.Angle = Angle; Slug.Pitch = Pitch; 
@@ -1153,13 +1179,7 @@ Class PogoGun : Weapon
 		Loop;
 		
 		Fireboost:
-		RLBS CBBB 1 {
-			if(invoker.Flash)
-			{
-				invoker.Flash.Vel = Vel;
-				invoker.Flash.SetOrigin(Invoker.MuzPos,1);
-			}
-		}
+		RLBS CBBB 1;
 		RLBS BA 6;
 		Goto Ready;
 		
@@ -1434,6 +1454,7 @@ Class PogoGunAmmo : Ammo
 		Inventory.MaxAmount 60;
 		Inventory.Icon "CLIPA0";
 		Scale 0.02;
+		+INVENTORY.IGNORESKILL;
 	}
 	States
 	{
@@ -1465,7 +1486,7 @@ Class BigSlug : Actor//FastProjectile
 			SLUG A 1 {
 				//Vel.z -= GetGravity();
 				Roll += FloatSpeed;
-				if(Vel.lengthSquared()>900 ) PogoGun.SpawnBlur(Self, Pos, 0x47CF5D).vel = vel*0.3;
+				//if(Vel.lengthSquared()>900 ) PogoGun.SpawnBlur(Self, Pos, 0x47CF5D).vel = vel*0.3;
 			}
 			loop;
 		
@@ -1484,15 +1505,17 @@ Class MoveBlur : actor
 	Default{
 		RenderStyle "None";
 		StencilColor "777777";
+		Alpha 1;
 		+NOINTERACTION
+		+BRIGHT
 	}
 	States{
     Spawn:
-		"####" # 0;
-		"####" # 1;
+		"####" # 1 NODELAY;
 		"####" # 1 A_SetRenderStyle(alpha,STYLE_AddShaded);
-		"####" ########## 1 {Alpha -= 0.1;}
-	Stop;
+	Fade:
+		"####" # 1 {Alpha = Alpha*0.9 - 0.01; if(Alpha<0) Destroy(); }
+		Loop;
 	}
 }
 
