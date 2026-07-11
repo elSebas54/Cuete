@@ -769,6 +769,8 @@ Class Bronca : DoomPlayer
 		Vector3 PreVel = Vel;
 		Super.PostTeleport(destpos, destangle, flags);
 		Vel = OldVel;
+		OldPosZZ = Pos.Z;
+		OldPosZ = Pos.Z;
 	}
 }
 
@@ -976,7 +978,7 @@ Class PogoGun : Weapon
 	Default
 	{
 		Weapon.SelectionOrder 100;
-		Weapon.AmmoUse 25;
+		Weapon.AmmoUse 22;
 		Weapon.SlotNumber 1;
 		weapon.ammotype1 "PogoGunAmmo";
 	}
@@ -1045,10 +1047,10 @@ Class PogoGun : Weapon
 			invoker.Flash.Vel = Vel;
 			invoker.Flash.SetOrigin(Invoker.MuzPos,1);
 			invoker.Flash.Tics++;
+			A_StartSound("WoolShear",1,0,0.4,1,0.9);
 				
 			if(invoker.hit)
 			{
-				
 				If(results.HitType == TRACE_HitActor && Results.HitActor)
 				{
 					Int kDamg = 200;
@@ -1079,16 +1081,17 @@ Class PogoGun : Weapon
 						
 						double spacin = 50;
 						double frac = Results.Distance/spacin;
+						Vector3 ProjDir = (proj.Pos - oldpos).Unit();
 						For(int i; i < frac; i++)
 						{
-							actor blur = SpawnBlur(proj, oldpos + Results.HitVector*spacin*i, 0x47CF5D);
-							Blur.vel = Results.HitVector*2;
+							actor blur = SpawnBlur(proj, oldpos + ProjDir*spacin*i, 0x47CF5D);
+							Blur.vel = ProjDir*2;
 							Blur.Alpha = 0.2 + 3*float(i)/frac;
 						}
 						
 						//proj.SetState(proj.SpawnState);
 						Puff.Scale = (0.2,0.2);
-						Puff.A_StartSound("BatParry",4,0,1,0.2, 0.9 );
+						Puff.A_StartSound("BatParry",3,0,1,0.2, 0.9 );
 					}
 					If(Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
@@ -1111,6 +1114,7 @@ Class PogoGun : Weapon
 							Results.HitActor.Vel += Results.HitVector * Max(0, Results.HitVector dot (Vel-Results.HitActor.Vel));
 							Results.HitActor.Vel.z += Results.HitActor.GetGravity()*4;
 						}
+						if(invoker.boost) A_QuakeEx(0, 0, kDamg*0.003, Min(25, 8 + 0.04*kDamg), 0,  20, "", QF_RELATIVE|QF_SCALEDOWN|QF_WAVE, 8.75, 8.75, 17.5);
 					}
 				}
 				
@@ -1142,6 +1146,8 @@ Class PogoGun : Weapon
 				Recoil = Clamp( -VelDot - 6, Recoil*2, Recoil );
 				Vel += invoker.LookDir * Recoil;
 				
+				//A_StopSound(1);
+				A_StartSound("RayShoot",1);
 				//invoker.Flash.Vel = (0,0,0);
 				Actor Ray = Spawn("RayTracer", Invoker.MuzPos );
 				Vector3 Dir = Results.HitPos - Ray.Pos;
@@ -1153,7 +1159,6 @@ Class PogoGun : Weapon
 				Invoker.RayPos = Invoker.MuzPos;
 				Invoker.RayScale = Ray.Scale.x;
 				if(CVar.GetCVar( "RailTrail", player ).GetBool()) A_Overlay(2,"RayTrail");
-				A_StartSound("RayShoot",1);
 				if(!puff) Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
 				If(!Results.HitActor) Puff.A_StartSound("ricochet",2);
 				Bronca(self).WepVel += invoker.LookDir*-30;
@@ -1164,7 +1169,7 @@ Class PogoGun : Weapon
 					Actor slug = spawn("BigSlug", Results.HitPos - Results.HitVector*10);
 					Slug.Target = self;
 					If(invoker.hit) {
-						Slug.Vel = -4*Results.HitVector + (0,0,Slug.GetGravity()*16 );
+						Slug.Vel = -2*Results.HitVector + (0,0,Slug.GetGravity()*16 );
 					}
 					else Slug.Vel = Results.HitVector*50;
 					Slug.Angle = Angle; Slug.Pitch = Pitch; 
@@ -1215,6 +1220,8 @@ Class PogoGun : Weapon
 					Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector);
 					Puff.Scale = (0.2,0.2);
 					Puff.A_StartSound("ricochet",7,0,0.4,1);
+					
+					if(Results.HitActor && Results.HitActor.bMISSILE) Return ResolveState("Fire");
 				
 					If(results.HitType == TRACE_HitActor && Results.HitActor && Results.HitActor.bSHOOTABLE)
 					{
