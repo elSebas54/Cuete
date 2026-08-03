@@ -915,6 +915,35 @@ Class PogoGun : Weapon
 		Return (cos(angle)*cos(pitch), sin(angle)*cos(pitch), sin(-Pitch))*Length;
 	}
 	
+	Static Vector3 GetTraceNormal(TraceResults Results)
+	{
+		Vector3 Normal = -Results.HitVector;
+		If (Results.HitActor) 
+		{
+			Normal = Results.HitPos - Results.HitActor.Pos.PlusZ(Results.HitActor.Height*0.5);
+			Normal = Normal.unit();
+		}
+		If (Results.HitType == TRACE_HitWall) 
+		{
+			Normal = (0,0,0)+RotateVector(Results.HitLine.Delta,-90).Unit();
+			If(Results.Side == Line.back) Normal *= -1;
+		}
+		else if (Results.HitType == TRACE_HitFloor || Results.HitType == TRACE_HitCeiling) 
+		{
+			If(Results.ffloor) 
+			{
+				Normal = Results.ffloor.Bottom.Normal;
+				if (Results.HitType == TRACE_HitCeiling ) Normal *= -1;
+			}
+			else 
+			{
+				if(Results.HitType == TRACE_HitFloor ) Normal = Results.HitSector.FloorPlane.Normal;
+				else if (Results.HitType == TRACE_HitCeiling ) Normal = Results.HitSector.CeilingPlane.Normal;
+			}
+		}
+		Return Normal;
+	}
+	
 	static Actor SpawnBlur( Actor obj, Vector3 Pos, color col = 0x777777 )
 	{
 		Actor blur = Spawn("MoveBlur", Pos);
@@ -964,10 +993,10 @@ Class PogoGun : Weapon
 		If(player.cmd.buttons & BT_RELOAD){invoker.LookDir *= -1;}
 		invoker.Zofs = height*0.5 + player.mo.AttackZOffset*player.crouchFactor;
 		invoker.Ray.Reset();
-		invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 4000, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
+		invoker.hit = invoker.Ray.Trace(Pos+(0,0,invoker.Zofs), CurSector, invoker.LookDir, 70, TRACE_ReportPortals, 0xFFFFFFFF, 0, self);
 		
 		//if(invoker.Ray.Results.HitActor) A_Log(invoker.Ray.Results.HitActor.GetClassName() );
-		invoker.boost = invoker.Ray.Results.distance <= 70 + Max(0,Vel dot invoker.LookDir);
+		invoker.boost = invoker.hit && invoker.Ray.Results.distance <= 70 + Max(0,Vel dot invoker.LookDir);
 		
 		invoker.MuzPos = PogoGun.Vec3FromAngle(38.7, Angle, Pitch+23) + Bronca(self).WepBob;
 		invoker.MuzPos *= 0.4;
@@ -1026,7 +1055,7 @@ Class PogoGun : Weapon
 		
 		Fire:
 		RLBS A 0 {
-			invoker.reactiontime = 5;
+			invoker.reactiontime = 3;
 			SetInventory("PogoGunAmmo",0);
 			invoker.Flash = Spawn("RayPuff", Invoker.MuzPos );
 			invoker.Flash.Vel = Vel;
@@ -1043,6 +1072,7 @@ Class PogoGun : Weapon
 			Double Recoil = -1;
 			Bool hitenemy, hitproj;
 			Double VelDot = invoker.LookDir dot Vel;
+			Vector3 SrfNormal = GetTraceNormal(Results);
 			
 			invoker.Flash.Vel = Vel;
 			invoker.Flash.SetOrigin(Invoker.MuzPos,1);
@@ -1120,6 +1150,7 @@ Class PogoGun : Weapon
 				
 				If(invoker.boost)
 				{
+					if(!Results.HitActor) Vel -= SrfNormal * (Vel dot SrfNormal) * 0.8;
 					invoker.reactiontime = 0;
 					Recoil = -9;
 					If(hitenemy && VelDot > 8) {Recoil *= -0.2; VelDot *= -1;}
@@ -1143,7 +1174,7 @@ Class PogoGun : Weapon
 			}
 			If(!invoker.reactiontime) 
 			{
-				Recoil = Clamp( -VelDot - 6, Recoil*2, Recoil );
+				Recoil = Clamp( -VelDot - 6, Recoil*1.6, Recoil );
 				Vel += invoker.LookDir * Recoil;
 				
 				//A_StopSound(1);
@@ -1159,19 +1190,29 @@ Class PogoGun : Weapon
 				Invoker.RayPos = Invoker.MuzPos;
 				Invoker.RayScale = Ray.Scale.x;
 				if(CVar.GetCVar( "RailTrail", player ).GetBool()) A_Overlay(2,"RayTrail");
-				if(!puff) Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
-				If(!Results.HitActor) Puff.A_StartSound("ricochet",2);
 				Bronca(self).WepVel += invoker.LookDir*-30;
 				invoker.Ray.ActivateLines(self);
 				
-				If(!hitproj)
+				if(invoker.hit)
 				{
-					Actor slug = spawn("BigSlug", Results.HitPos - Results.HitVector*10);
+					if(!puff) Puff = Spawn("RayPuff", Results.HitPos - Results.HitVector*3);
+					If(!Results.HitActor) Puff.A_StartSound("ricochet",2);
+				}
+				
+				If(!hitproj && (Invoker.Boost || !invoker.hit) )
+				{
+					Vector3 SlugPos = Results.HitPos - (0,0,7);
+					if(invoker.hit) SlugPos += 10*SrfNormal;
+				
+					Actor slug = spawn("BigSlug", SlugPos);
 					Slug.Target = self;
 					If(invoker.hit) {
-						Slug.Vel = -2*Results.HitVector + (0,0,Slug.GetGravity()*16 );
+						Slug.Vel = -2*Results.HitVector + SrfNormal*Slug.GetGravity()*16;
 					}
-					else Slug.Vel = Results.HitVector*50;
+					else {
+						Slug.Vel = Results.HitVector* (25 + Veldot);
+						Slug.Gravity = 0;
+					}
 					Slug.Angle = Angle; Slug.Pitch = Pitch; 
 					Slug.FloatSpeed = Random(10,30);
 				}
@@ -1500,7 +1541,9 @@ Class BigSlug : Actor//FastProjectile
 		Death:
 			SLUG A 1 {
 				Actor Puff = Spawn("RayPuff", Pos + (0,0,Height*0.5) );
-				Puff.Scale = (0.2,0.2);
+				Puff.Scale = (4,4);
+				A_Explode(200,100, 0, 1, 100);
+				A_StartSound("PAP", 4, 0, 1, 0.8, 0.9);
 			}	
 			TNT1 A 1;
 			Stop;
